@@ -38,6 +38,8 @@ export class TemplateDiscovery {
       dot: true, // Include hidden files like __.gitignore
     });
 
+    templatePaths.sort();
+
     const templates: Source[] = [];
 
     for (const templatePath of templatePaths) {
@@ -99,7 +101,11 @@ export class TemplateDiscovery {
       }
     }
 
-    return templates;
+    return templates.sort((a, b) => {
+      const relA = a.resolvedRelativePath ?? path.relative(templatesDir, a.path);
+      const relB = b.resolvedRelativePath ?? path.relative(templatesDir, b.path);
+      return relA.localeCompare(relB) || a.path.localeCompare(b.path);
+    });
   }
 
   /**

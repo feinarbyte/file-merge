@@ -29,6 +29,8 @@ export class OverrideDiscovery {
       ],
     });
 
+    overridePaths.sort();
+
     const overrides: Source[] = [];
 
     for (const overridePath of overridePaths) {
@@ -46,7 +48,7 @@ export class OverrideDiscovery {
       }
     }
 
-    return overrides;
+    return overrides.sort((a, b) => a.path.localeCompare(b.path));
   }
 
   /**

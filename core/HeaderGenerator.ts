@@ -15,8 +15,8 @@ export class HeaderGenerator {
    */
   generate(targetPath: string, sourcePaths: string[]): string {
     const ext = path.extname(targetPath).toLowerCase();
-    const relSources = sourcePaths.map(
-      (s) => `file://./${path.relative(this.projectRoot, s)}`,
+    const relSources = sourcePaths.map((sourcePath) =>
+      this.formatSourcePath(targetPath, sourcePath),
     );
 
     // Detect comment style based on extension
@@ -156,5 +156,26 @@ export class HeaderGenerator {
 
       return lines.slice(i).join("\n");
     }
+  }
+
+  /**
+   * Format file:// link relative to the target file location
+   */
+  private formatSourcePath(targetPath: string, sourcePath: string): string {
+    const targetDir = path.dirname(targetPath);
+    let relativePath = path.relative(targetDir, sourcePath) || ".";
+
+    // Normalize to POSIX-style separators for VS Code file:// links
+    relativePath = relativePath.replace(/\\/g, "/");
+
+    if (relativePath === ".") {
+      relativePath = "./";
+    } else if (relativePath.startsWith("../")) {
+      relativePath = `./${relativePath}`;
+    } else if (!relativePath.startsWith("./")) {
+      relativePath = `./${relativePath}`;
+    }
+
+    return `file://${relativePath}`;
   }
 }

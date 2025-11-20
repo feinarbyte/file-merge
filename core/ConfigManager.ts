@@ -76,7 +76,11 @@ export class ConfigManager {
     console.log(`📋 Processing ${targetGroups.size} configuration files...\n`);
 
     // 4. Process each target file
-    for (const [targetPath, sources] of targetGroups) {
+    const sortedTargets = Array.from(targetGroups.keys()).sort();
+
+    for (const targetPath of sortedTargets) {
+      const sources = targetGroups.get(targetPath);
+      if (!sources) continue;
       await this.processTarget(targetPath, sources, activeModules);
     }
 
@@ -141,7 +145,13 @@ export class ConfigManager {
 
     // Sort sources by priority within each group
     for (const [_targetPath, sources] of groups) {
-      sources.sort((a, b) => a.priority - b.priority);
+      sources.sort((a, b) => {
+        const priorityDiff = a.priority - b.priority;
+        if (priorityDiff !== 0) {
+          return priorityDiff;
+        }
+        return a.path.localeCompare(b.path);
+      });
     }
 
     return groups;

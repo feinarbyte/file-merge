@@ -45,6 +45,8 @@ export class FragmentDiscovery {
         ],
       });
 
+      fragmentPaths.sort();
+
       for (const fragmentPath of fragmentPaths) {
         try {
           const fragment = await this.loadFragment(fragmentPath);
@@ -57,7 +59,7 @@ export class FragmentDiscovery {
       }
     }
 
-    return fragments;
+    return fragments.sort((a, b) => a.path.localeCompare(b.path));
   }
 
   /**
