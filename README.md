@@ -17,6 +17,92 @@ npx @feinarbyte/file-merge
 npm install -g @feinarbyte/file-merge
 ```
 
+## Configuration
+
+Create a config file in your project root to customize behavior:
+
+```bash
+# Create YAML config (recommended)
+file-merge init
+
+# Or create JSON config
+file-merge init --json
+```
+
+### YAML Configuration (Recommended)
+
+```yaml
+# .file-merge.config.yaml
+templatesDir: config-templates
+
+# Glob patterns with negation support
+fragmentPatterns:
+  - "**/*.fragment.*"        # Include all fragment files
+  - "!node_modules/**"       # Exclude node_modules
+  - "!dist/**"               # Exclude dist
+  # Advanced: Exclude folder but include specific patterns
+  # - "!folderA/folderB/**"
+  # - "folderA/folderB/catalog.*.fragment.*"
+
+ignorePatterns:
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/.git/**"
+```
+
+### JSON Configuration
+
+```json
+{
+  "templatesDir": "config-templates",
+  "fragmentPatterns": [
+    "**/*.fragment.*",
+    "!node_modules/**",
+    "!dist/**"
+  ],
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.git/**"
+  ]
+}
+```
+
+### Configuration Options
+
+- **`templatesDir`** - Directory containing template files with `__` prefix (default: `"atom-framework/config-templates"`)
+- **`fragmentPatterns`** - Glob patterns to discover fragment files. **Supports negation with `!` prefix**
+  - Example: `["**/*.fragment.*", "!node_modules/**", "!folderA/**", "folderA/catalog.*.fragment.*"]`
+- **`ignorePatterns`** - Additional patterns to ignore (applied after fragmentPatterns)
+- **`modules`** - Optional module activation filtering (atom-framework specific)
+  - `activeDir` - Directory where active modules are symlinked
+  - `sourceDir` - Directory containing available modules
+- **`watchPatterns`** - Patterns to watch in watch mode (optional, auto-derived if not set)
+
+### Config File Formats
+
+File-merge automatically detects and loads config files in this order:
+1. `.file-merge.config.yaml` (recommended)
+2. `.file-merge.config.yml`
+3. `.file-merge.config.json`
+
+If no config file exists, file-merge uses default patterns suitable for the atom-framework structure.
+
+### Custom Config Location
+
+You can specify a custom config file location:
+
+```bash
+# Use a different config file
+file-merge apply --config configs/prod.config.json
+
+# Use a shared config from parent directory
+file-merge apply --config ../shared-config.json
+
+# Watch with custom config
+file-merge watch --config my-config.json
+```
+
 ## Usage
 
 ### Apply Merging
@@ -29,6 +115,7 @@ Options:
 - `--dry-run` - Show what would be generated without writing files
 - `--verbose` - Detailed output
 - `--filter <patterns...>` - Only process files matching patterns
+- `--config <path>` - Path to config file (default: auto-detect `.yaml`, `.yml`, or `.json`)
 
 ### Watch Mode
 
@@ -37,6 +124,10 @@ file-merge watch
 ```
 
 Automatically regenerates merged files when source files change.
+
+Options:
+- `--verbose` - Detailed output
+- `--config <path>` - Path to config file (default: auto-detect `.yaml`, `.yml`, or `.json`)
 
 ### Migration
 
@@ -62,11 +153,13 @@ file-merge status [file]
 
 ## Features
 
-- **Template-based merging** - Define templates in `config-templates/`
-- **Fragment merging** - Merge fragments from packages/modules
+- **Configurable** - Customize templates directory, fragment patterns, and module locations via `.file-merge.config.json`
+- **Template-based merging** - Define templates in configurable templates directory (default: `config-templates/`)
+- **Fragment merging** - Merge fragments from packages/modules using configurable patterns
 - **Override support** - Override templates with project-specific changes
 - **Smart merge strategies** - Auto-detects merge strategy based on file type
 - **Template variables** - Use `{{VARIABLE}}` syntax in filenames and paths (resolved from environment variables)
+- **Module filtering** - Only include fragments from active modules (configurable)
 - **Supported formats**: YAML, JSON, TOML, GitLab CI, Docker Compose, TypeScript configs, VS Code tasks, text files (.gitignore, .dockerignore), and more
 
 ## Template Variables
@@ -125,6 +218,30 @@ npm run build
 
 # Watch mode
 npm run dev
+```
+
+## Migration from Hardcoded Paths
+
+If you're using an older version with hardcoded `atom-framework/` paths, file-merge will continue to work with the default configuration. To customize for your project:
+
+1. Run `file-merge init` to create `.file-merge.config.json`
+2. Edit the config to match your project structure
+3. Update `templatesDir`, `fragmentPatterns`, and `modules` paths as needed
+
+Example for a different structure:
+
+```json
+{
+  "templatesDir": "config-templates",
+  "fragmentPatterns": [
+    "src/**/*.fragment.*",
+    "libs/**/*.fragment.*"
+  ],
+  "modules": {
+    "activeDir": "enabled-modules",
+    "sourceDir": "src/modules"
+  }
+}
 ```
 
 ## License

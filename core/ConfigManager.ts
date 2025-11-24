@@ -14,6 +14,7 @@ import { HeaderGenerator } from "./HeaderGenerator.js";
 import { OverrideDiscovery } from "./OverrideDiscovery.js";
 import { SymlinkManager } from "./SymlinkManager.js";
 import { TemplateDiscovery } from "./TemplateDiscovery.js";
+import { FileMergeConfigLoader, type FileMergeConfig } from "./FileMergeConfig.js";
 import type {
   ConfigManagerOptions,
   Fragment,
@@ -25,17 +26,42 @@ export class ConfigManager {
   private templateDiscovery: TemplateDiscovery;
   private fragmentDiscovery: FragmentDiscovery;
   private overrideDiscovery: OverrideDiscovery;
-  private moduleFilter: ActiveModuleFilter;
+  private moduleFilter?: ActiveModuleFilter;
   private symlinkManager: SymlinkManager;
   private headerGenerator: HeaderGenerator;
+  private config: FileMergeConfig;
 
   constructor(private options: ConfigManagerOptions) {
-    const { projectRoot } = options;
-    this.templateDiscovery = new TemplateDiscovery(projectRoot);
-    this.fragmentDiscovery = new FragmentDiscovery(projectRoot);
-    this.overrideDiscovery = new OverrideDiscovery(projectRoot);
-    this.moduleFilter = new ActiveModuleFilter(projectRoot);
+    // This will be initialized in init()
+    this.config = null as any;
+    this.templateDiscovery = null as any;
+    this.fragmentDiscovery = null as any;
+    this.overrideDiscovery = null as any;
+    this.moduleFilter = null as any;
     this.symlinkManager = new SymlinkManager();
+    this.headerGenerator = null as any;
+  }
+
+  /**
+   * Initialize config and dependencies
+   * Must be called before using the manager
+   */
+  async init(): Promise<void> {
+    const { projectRoot, config: userConfig, configPath } = this.options;
+    
+    // Load config (use provided config or load from file/defaults)
+    this.config = userConfig 
+      ? { ...await FileMergeConfigLoader.load(projectRoot, configPath), ...userConfig }
+      : await FileMergeConfigLoader.load(projectRoot, configPath);
+
+    // Initialize dependencies with config
+    this.templateDiscovery = new TemplateDiscovery(projectRoot, this.config);
+    this.fragmentDiscovery = new FragmentDiscovery(projectRoot, this.config);
+    this.overrideDiscovery = new OverrideDiscovery(projectRoot);
+    // Only create module filter if modules config is provided
+    this.moduleFilter = this.config.modules 
+      ? new ActiveModuleFilter(projectRoot, this.config)
+      : undefined;
     this.headerGenerator = new HeaderGenerator(projectRoot);
   }
 
@@ -43,6 +69,11 @@ export class ConfigManager {
    * Apply configuration from templates, fragments, and overrides
    */
   async apply(): Promise<void> {
+    // Ensure config is loaded
+    if (!this.config) {
+      await this.init();
+    }
+
     const { verbose } = this.options;
 
     console.log("🔍 Discovering configuration sources...\n");
@@ -60,13 +91,19 @@ export class ConfigManager {
       console.log(`  Found ${overrides.length} overrides\n`);
     }
 
-    // 2. Filter fragments by active modules and conditions
-    const activeModules = this.moduleFilter.getActiveModules();
-    const fragments =
-      this.moduleFilter.filterFragmentsWithConditions(allFragments);
+    // 2. Filter fragments by active modules and conditions (if module filtering is enabled)
+    const fragments = this.moduleFilter
+      ? this.moduleFilter.filterFragmentsWithConditions(allFragments)
+      : allFragments;
+    
+    const activeModules = this.moduleFilter?.getActiveModules() ?? [];
 
     if (verbose) {
-      console.log(`  Active modules: ${activeModules.join(", ")}`);
+      if (this.moduleFilter) {
+        console.log(`  Active modules: ${activeModules.join(", ")}`);
+      } else {
+        console.log(`  Module filtering: disabled (using glob patterns only)`);
+      }
       console.log(`  Fragments after filtering: ${fragments.length}\n`);
     }
 

@@ -11,6 +11,7 @@ import { promisify } from 'node:util';
 import { TemplateDiscovery } from './TemplateDiscovery.js';
 import { DiffExtractor } from '../migration/DiffExtractor.js';
 import { ConfigManager } from './ConfigManager.js';
+import { FileMergeConfigLoader, type FileMergeConfig } from './FileMergeConfig.js';
 import type { ConfigContent } from './types.js';
 
 const exec = promisify(childProcess.exec);
@@ -27,18 +28,27 @@ export interface CreateOverrideOptions {
 }
 
 export class OverrideCreator {
-  private templateDiscovery: TemplateDiscovery;
+  private templateDiscovery!: TemplateDiscovery;
   private diffExtractor: DiffExtractor;
+  private config!: FileMergeConfig;
 
   constructor(private projectRoot: string) {
-    this.templateDiscovery = new TemplateDiscovery(projectRoot);
     this.diffExtractor = new DiffExtractor();
+  }
+
+  private async init(): Promise<void> {
+    if (!this.config) {
+      this.config = await FileMergeConfigLoader.load(this.projectRoot);
+      this.templateDiscovery = new TemplateDiscovery(this.projectRoot, this.config);
+    }
   }
 
   /**
    * Create override file for managed config
    */
   async create(targetPath: string, options: CreateOverrideOptions = {}): Promise<void> {
+    await this.init();
+
     // 1. Validate and resolve paths
     const absoluteTargetPath = path.resolve(this.projectRoot, targetPath);
     const relativeTargetPath = path.relative(this.projectRoot, absoluteTargetPath);
@@ -48,7 +58,7 @@ export class OverrideCreator {
     if (!templatePath) {
       throw new Error(
         `File not managed: ${relativeTargetPath}\n` +
-        `  No template found in atom-framework/config-templates/\n` +
+        `  No template found in ${this.config.templatesDir ?? "config-templates"}/\n` +
         `  Use 'pnpm config:add ${relativeTargetPath}' to add it first.`
       );
     }
@@ -269,7 +279,7 @@ export class OverrideCreator {
   private findTemplatePath(targetPath: string): string | null {
     const parsed = path.parse(targetPath);
     const templatePath = path.join(
-      'atom-framework/config-templates',
+      this.config.templatesDir ?? "config-templates",
       parsed.dir,
       `__${parsed.base}`
     );

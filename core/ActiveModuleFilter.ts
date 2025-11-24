@@ -8,23 +8,30 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Fragment } from "./types.js";
+import type { FileMergeConfig } from "./FileMergeConfig.js";
 
 export class ActiveModuleFilter {
   private modulesDir: string;
-  private atomModulesDir: string;
+  private sourceModulesDir: string;
   private activeModulesCache: Set<string> | null = null;
 
-  constructor(projectRoot: string) {
-    this.modulesDir = path.join(projectRoot, "modules");
-    this.atomModulesDir = path.join(projectRoot, "atom-framework", "modules");
+  constructor(
+    private projectRoot: string,
+    private config: FileMergeConfig
+  ) {
+    if (!config.modules?.activeDir || !config.modules?.sourceDir) {
+      throw new Error("ActiveModuleFilter requires modules.activeDir and modules.sourceDir in config");
+    }
+    this.modulesDir = path.join(projectRoot, config.modules.activeDir);
+    this.sourceModulesDir = path.join(projectRoot, config.modules.sourceDir);
   }
 
   /**
-   * Check if a module is active (symlinked from atom-framework/modules to modules/)
+   * Check if a module is active (symlinked from source modules dir to active modules dir)
    */
   isModuleActive(moduleName: string): boolean {
     const targetPath = path.join(this.modulesDir, moduleName);
-    const sourcePath = path.join(this.atomModulesDir, moduleName);
+    const sourcePath = path.join(this.sourceModulesDir, moduleName);
 
     // Check if target exists
     if (!fs.existsSync(targetPath)) {
@@ -38,7 +45,7 @@ export class ActiveModuleFilter {
         return false;
       }
 
-      // Check if it points to atom-framework/modules
+      // Check if it points to source modules directory
       const linkTarget = fs.readlinkSync(targetPath);
       const resolvedTarget = path.resolve(this.modulesDir, linkTarget);
       const resolvedSource = path.resolve(sourcePath);
@@ -53,17 +60,25 @@ export class ActiveModuleFilter {
    * Filter fragments based on _activeOnly setting and module activation
    */
   filterFragments(fragments: Fragment[]): Fragment[] {
+    if (!this.config.modules?.sourceDir) {
+      return fragments; // No filtering if modules not configured
+    }
+
+    // Build regex to match source modules directory pattern
+    const sourceModulesDir = this.config.modules.sourceDir;
+    const sourceModulesPattern = sourceModulesDir.replace(/\\/g, "[/\\\\]");
+    const modulePathRegex = new RegExp(
+      `${sourceModulesPattern}[/\\\\]([^/\\\\]+)`
+    );
+
     return fragments.filter((fragment) => {
-      // Fragments outside atom-framework are always included
-      if (!fragment.path.includes("atom-framework/modules/")) {
+      // Fragments outside source modules directory are always included
+      if (!fragment.path.includes(sourceModulesDir)) {
         return true;
       }
 
       // Extract module name from path
-      // e.g., atom-framework/modules/prisma-module/... → prisma-module
-      const match = fragment.path.match(
-        /atom-framework[/\\]modules[/\\]([^/\\]+)/,
-      );
+      const match = fragment.path.match(modulePathRegex);
       if (!match) {
         return true; // Not in modules dir, include it
       }

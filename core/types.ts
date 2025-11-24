@@ -143,4 +143,8 @@ export interface ConfigManagerOptions {
   verbose?: boolean;
   /** Filter patterns for files to process */
   filter?: string[];
+  /** Configuration (loaded from .file-merge.config.json or defaults) */
+  config?: import('./FileMergeConfig.js').FileMergeConfig;
+  /** Path to config file (overrides default .file-merge.config.json) */
+  configPath?: string;
 }

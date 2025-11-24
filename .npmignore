@@ -5,4 +5,5 @@ dist/
 .DS_Store
 test-yaml.js
 tsconfig.json
+.file-merge.config.example.json
 

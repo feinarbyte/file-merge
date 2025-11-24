@@ -8,26 +8,37 @@ import { ActiveModuleFilter } from "../core/ActiveModuleFilter.js";
 import { FragmentDiscovery } from "../core/FragmentDiscovery.js";
 import { OverrideDiscovery } from "../core/OverrideDiscovery.js";
 import { TemplateDiscovery } from "../core/TemplateDiscovery.js";
+import { FileMergeConfigLoader, type FileMergeConfig } from "../core/FileMergeConfig.js";
 import { type ConfigError, ErrorSeverity } from "../core/types.js";
 
 export class Validator {
-  private templateDiscovery: TemplateDiscovery;
-  private fragmentDiscovery: FragmentDiscovery;
-  private overrideDiscovery: OverrideDiscovery;
-  private moduleFilter: ActiveModuleFilter;
+  private templateDiscovery!: TemplateDiscovery;
+  private fragmentDiscovery!: FragmentDiscovery;
+  private overrideDiscovery!: OverrideDiscovery;
+  private moduleFilter?: ActiveModuleFilter;
+  private config!: FileMergeConfig;
   private errors: ConfigError[] = [];
 
-  constructor(projectRoot: string) {
-    this.templateDiscovery = new TemplateDiscovery(projectRoot);
-    this.fragmentDiscovery = new FragmentDiscovery(projectRoot);
-    this.overrideDiscovery = new OverrideDiscovery(projectRoot);
-    this.moduleFilter = new ActiveModuleFilter(projectRoot);
+  constructor(private projectRoot: string) {}
+
+  private async init(): Promise<void> {
+    if (!this.config) {
+      this.config = await FileMergeConfigLoader.load(this.projectRoot);
+      this.templateDiscovery = new TemplateDiscovery(this.projectRoot, this.config);
+      this.fragmentDiscovery = new FragmentDiscovery(this.projectRoot, this.config);
+      this.overrideDiscovery = new OverrideDiscovery(this.projectRoot);
+      this.moduleFilter = this.config.modules
+        ? new ActiveModuleFilter(this.projectRoot, this.config)
+        : undefined;
+    }
   }
 
   /**
    * Validate all configuration
    */
   async validate(): Promise<{ valid: boolean; errors: ConfigError[] }> {
+    await this.init();
+
     console.log("✅ Validating configuration...\n");
 
     this.errors = [];
@@ -72,10 +83,14 @@ export class Validator {
 
     try {
       const allFragments = await this.fragmentDiscovery.discoverFragments();
-      const activeModules = this.moduleFilter.getActiveModules();
+      const activeModules = this.moduleFilter?.getActiveModules() ?? [];
 
       console.log(`  Found ${allFragments.length} fragments`);
-      console.log(`  Active modules: ${activeModules.join(", ") || "none"}`);
+      if (this.moduleFilter) {
+        console.log(`  Active modules: ${activeModules.join(", ") || "none"}`);
+      } else {
+        console.log(`  Module filtering: disabled (using glob patterns only)`);
+      }
 
       // Validate each fragment
       for (const fragment of allFragments) {

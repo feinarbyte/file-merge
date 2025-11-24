@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "description": "Example configuration for @feinarbyte/file-merge",
+  "templatesDir": "config-templates",
+  "fragmentPatterns": [
+    "packages/**/*.fragment.*",
+    "apps/**/*.fragment.*",
+    "modules/**/*.fragment.*",
+    "*.fragment.*"
+  ],
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.git/**",
+    "**/build/**"
+  ],
+  "modules": {
+    "activeDir": "modules",
+    "sourceDir": "available-modules"
+  }
+}
+

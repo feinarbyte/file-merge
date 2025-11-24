@@ -8,6 +8,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { SymlinkManager } from './SymlinkManager.js';
 import { TemplateDiscovery } from './TemplateDiscovery.js';
+import { FileMergeConfigLoader, type FileMergeConfig } from './FileMergeConfig.js';
 
 export interface AddFileOptions {
   /** Overwrite if template already exists */
@@ -20,21 +21,30 @@ export interface AddFileOptions {
 
 export class FileManager {
   private symlinkManager: SymlinkManager;
-  private templateDiscovery: TemplateDiscovery;
-  private templatesDir: string;
+  private templateDiscovery!: TemplateDiscovery;
+  private templatesDir!: string;
   private gitignorePath: string;
+  private config!: FileMergeConfig;
 
   constructor(private projectRoot: string) {
     this.symlinkManager = new SymlinkManager();
-    this.templateDiscovery = new TemplateDiscovery(projectRoot);
-    this.templatesDir = path.join(projectRoot, 'atom-framework/config-templates');
     this.gitignorePath = path.join(projectRoot, '.gitignore');
+  }
+
+  private async init(): Promise<void> {
+    if (!this.config) {
+      this.config = await FileMergeConfigLoader.load(this.projectRoot);
+      this.templateDiscovery = new TemplateDiscovery(this.projectRoot, this.config);
+      this.templatesDir = path.join(this.projectRoot, this.config.templatesDir ?? "config-templates");
+    }
   }
 
   /**
    * Add existing file to config management
    */
   async addFile(filePath: string, options: AddFileOptions = {}): Promise<void> {
+    await this.init();
+
     // 1. Validate and resolve paths
     const absoluteFilePath = path.resolve(this.projectRoot, filePath);
     const relativeFilePath = path.relative(this.projectRoot, absoluteFilePath);
@@ -112,6 +122,8 @@ export class FileManager {
    * Remove file from management (revert to unmanaged)
    */
   async removeFile(filePath: string): Promise<void> {
+    await this.init();
+
     const absoluteFilePath = path.resolve(this.projectRoot, filePath);
     const relativeFilePath = path.relative(this.projectRoot, absoluteFilePath);
 
@@ -160,7 +172,7 @@ export class FileManager {
   private getTemplatePath(filePath: string): string {
     const parsed = path.parse(filePath);
     return path.join(
-      'atom-framework/config-templates',
+      this.config.templatesDir ?? "config-templates",
       parsed.dir,
       `__${parsed.base}`
     );

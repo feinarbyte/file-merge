@@ -9,18 +9,22 @@ import * as path from "node:path";
 import { glob } from "glob";
 import type { ConfigContent, Source } from "./types.js";
 import { TemplateVariableResolver } from "./TemplateVariableResolver.js";
+import type { FileMergeConfig } from "./FileMergeConfig.js";
 
 export class TemplateDiscovery {
-  constructor(private projectRoot: string) {}
+  constructor(
+    private projectRoot: string,
+    private config: FileMergeConfig
+  ) {}
 
   /**
-   * Discover all template files in atom-framework/config-templates/
+   * Discover all template files in configured templates directory
    * Template files use __ prefix (e.g., __tsconfig.json)
    */
   async discoverTemplates(): Promise<Source[]> {
     const templatesDir = path.join(
       this.projectRoot,
-      "atom-framework/config-templates",
+      this.config.templatesDir ?? "config-templates",
     );
 
     // Check if templates directory exists
@@ -116,7 +120,7 @@ export class TemplateDiscovery {
   getTargetPath(templatePath: string, resolvedRelativePath?: string): string {
     const templatesDir = path.join(
       this.projectRoot,
-      "atom-framework/config-templates",
+      this.config.templatesDir ?? "config-templates",
     );
 
     let relativePath: string;

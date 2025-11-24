@@ -8,6 +8,7 @@
 
 import { Command } from 'commander';
 import { ConfigManager } from '../core/ConfigManager.js';
+import { FileMergeConfigLoader } from '../core/FileMergeConfig.js';
 import { Migrator } from '../migration/Migrator.js';
 import { Validator } from '../validation/Validator.js';
 import { FileManager } from '../core/FileManager.js';
@@ -30,6 +31,7 @@ program
   .option('--dry-run', 'Show what would be generated without writing files')
   .option('--verbose', 'Detailed output')
   .option('--filter <patterns...>', 'Only process files matching patterns')
+  .option('--config <path>', 'Path to config file (default: .file-merge.config.json)')
   .action(async (options) => {
     const projectRoot = process.cwd();
 
@@ -38,6 +40,7 @@ program
       dryRun: options.dryRun,
       verbose: options.verbose,
       filter: options.filter,
+      configPath: options.config,
     });
 
     try {
@@ -129,24 +132,27 @@ program
   .command('watch')
   .description('Watch for changes and auto-regenerate')
   .option('--verbose', 'Detailed output')
+  .option('--config <path>', 'Path to config file (default: .file-merge.config.json)')
   .action(async (options) => {
     const projectRoot = process.cwd();
 
+    // Load config to get watch patterns
+    const config = await FileMergeConfigLoader.load(projectRoot, options.config);
+
     console.log('👀 Watching for configuration changes...\n');
     console.log('  Watching:');
-    console.log('    - atom-framework/config-templates/**/*');
-    console.log('    - **/*.fragment.*');
-    console.log('    - **/*.overrides.*');
+    const watchPatterns = config.watchPatterns ?? [];
+    for (const pattern of watchPatterns) {
+      console.log(`    - ${pattern}`);
+    }
     console.log('\nPress Ctrl+C to stop\n');
 
-    const patterns = [
-      path.join(projectRoot, 'atom-framework/config-templates/**/*'),
-      path.join(projectRoot, '**/*.fragment.*'),
-      path.join(projectRoot, '**/*.overrides.*'),
-    ];
+    const patterns = watchPatterns.map(p => 
+      path.join(projectRoot, p)
+    );
 
     const watcher = watch(patterns, {
-      ignored: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
+      ignored: config.ignorePatterns ?? [],
       persistent: true,
       ignoreInitial: true,
     });
@@ -165,6 +171,7 @@ program
         const manager = new ConfigManager({
           projectRoot,
           verbose: options.verbose,
+          configPath: options.config,
         });
 
         await manager.apply();
@@ -278,6 +285,24 @@ program
       await fileManager.removeFile(file);
     } catch (error) {
       console.error('\n❌ Error removing file:', error);
+      process.exit(1);
+    }
+  });
+
+// Init command - create example config file
+program
+  .command('init')
+  .description('Create example config file (.yaml or .json)')
+  .option('--json', 'Create JSON config instead of YAML (default: YAML)')
+  .option('--force', 'Overwrite existing config file')
+  .action(async (options) => {
+    const projectRoot = process.cwd();
+    const format = options.json ? 'json' : 'yaml';
+
+    try {
+      await FileMergeConfigLoader.createExample(projectRoot, format, options.force);
+    } catch (error) {
+      console.error('\n❌ Error creating config:', error);
       process.exit(1);
     }
   });

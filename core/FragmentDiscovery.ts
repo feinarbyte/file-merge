@@ -14,22 +14,20 @@ import type {
   JsonValue,
 } from "./types.js";
 import { TemplateVariableResolver } from "./TemplateVariableResolver.js";
+import type { FileMergeConfig } from "./FileMergeConfig.js";
 
 export class FragmentDiscovery {
-  constructor(private projectRoot: string) {}
+  constructor(
+    private projectRoot: string,
+    private config: FileMergeConfig
+  ) {}
 
   /**
    * Discover all fragment files across the project
    * Returns unfiltered list (ActiveModuleFilter applies filtering later)
    */
   async discoverFragments(): Promise<Fragment[]> {
-    const searchLocations = [
-      "atom-framework/**/*.fragment.*",
-      "packages/**/*.fragment.*",
-      "apps/**/*.fragment.*",
-      "deployment/**/*.fragment.*",
-      "*.fragment.*",
-    ];
+    const searchLocations = this.config.fragmentPatterns ?? [];
 
     const fragments: Fragment[] = [];
 
@@ -37,12 +35,7 @@ export class FragmentDiscovery {
       const fullPattern = path.join(this.projectRoot, pattern);
       const fragmentPaths = await glob(fullPattern, {
         nodir: true,
-        ignore: [
-          "**/node_modules/**",
-          "**/dist/**",
-          "**/.git/**",
-          "**/atom-framework/templates/**", // Exclude bootstrap templates
-        ],
+        ignore: this.config.ignorePatterns ?? [],
       });
 
       fragmentPaths.sort();

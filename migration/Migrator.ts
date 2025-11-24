@@ -7,25 +7,35 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TemplateDiscovery } from "../core/TemplateDiscovery.js";
+import { FileMergeConfigLoader, type FileMergeConfig } from "../core/FileMergeConfig.js";
 import type { ConfigContent, DiffExtractionOptions } from "../core/types.js";
 import { BackupManager } from "./BackupManager.js";
 import { DiffExtractor } from "./DiffExtractor.js";
 
 export class Migrator {
-  private templateDiscovery: TemplateDiscovery;
+  private templateDiscovery!: TemplateDiscovery;
   private diffExtractor: DiffExtractor;
   private backupManager: BackupManager;
+  private config!: FileMergeConfig;
 
   constructor(private projectRoot: string) {
-    this.templateDiscovery = new TemplateDiscovery(projectRoot);
     this.diffExtractor = new DiffExtractor();
     this.backupManager = new BackupManager(projectRoot);
+  }
+
+  private async init(): Promise<void> {
+    if (!this.config) {
+      this.config = await FileMergeConfigLoader.load(this.projectRoot);
+      this.templateDiscovery = new TemplateDiscovery(this.projectRoot, this.config);
+    }
   }
 
   /**
    * Analyze existing configuration and report differences
    */
   async analyze(): Promise<void> {
+    await this.init();
+
     console.log("📊 Analyzing existing configuration...\n");
 
     const templates = await this.templateDiscovery.discoverTemplates();
@@ -138,6 +148,8 @@ export class Migrator {
       backup?: boolean;
     } = {},
   ): Promise<void> {
+    await this.init();
+
     const {
       strategy = "smart-extract",
       force = false,

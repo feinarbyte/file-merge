@@ -1,0 +1,33 @@
+# File-merge configuration
+# Supports both YAML and JSON formats
+
+# Directory containing template files with __ prefix
+templatesDir: config-templates
+
+# Glob patterns for discovering fragment files
+# Use ! prefix to exclude patterns
+fragmentPatterns:
+  - "**/*.fragment.*"        # Include all fragment files
+  - "!node_modules/**"       # Exclude node_modules
+  - "!dist/**"               # Exclude dist
+  
+  # Example: Include only specific folders
+  # - "packages/**/*.fragment.*"
+  # - "apps/**/*.fragment.*"
+  
+  # Example: Exclude folder but include specific patterns
+  # - "!folderA/folderB/**"
+  # - "folderA/folderB/catalog.*.fragment.*"
+
+# Patterns to ignore (applied after fragmentPatterns)
+ignorePatterns:
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/.git/**"
+
+# Optional: Module activation filtering (atom-framework specific)
+# Uncomment if you need symlink-based module filtering
+# modules:
+#   activeDir: modules
+#   sourceDir: available-modules
+

@@ -10,6 +10,7 @@ import { TemplateDiscovery } from './TemplateDiscovery.js';
 import { FragmentDiscovery } from './FragmentDiscovery.js';
 import { OverrideDiscovery } from './OverrideDiscovery.js';
 import { ActiveModuleFilter } from './ActiveModuleFilter.js';
+import { FileMergeConfigLoader, type FileMergeConfig } from './FileMergeConfig.js';
 import type { Source, Fragment } from './types.js';
 
 interface FileStatus {
@@ -20,22 +21,32 @@ interface FileStatus {
 }
 
 export class StatusReporter {
-  private templateDiscovery: TemplateDiscovery;
-  private fragmentDiscovery: FragmentDiscovery;
-  private overrideDiscovery: OverrideDiscovery;
-  private moduleFilter: ActiveModuleFilter;
+  private templateDiscovery!: TemplateDiscovery;
+  private fragmentDiscovery!: FragmentDiscovery;
+  private overrideDiscovery!: OverrideDiscovery;
+  private moduleFilter?: ActiveModuleFilter;
+  private config!: FileMergeConfig;
 
-  constructor(private projectRoot: string) {
-    this.templateDiscovery = new TemplateDiscovery(projectRoot);
-    this.fragmentDiscovery = new FragmentDiscovery(projectRoot);
-    this.overrideDiscovery = new OverrideDiscovery(projectRoot);
-    this.moduleFilter = new ActiveModuleFilter(projectRoot);
+  constructor(private projectRoot: string) {}
+
+  private async init(): Promise<void> {
+    if (!this.config) {
+      this.config = await FileMergeConfigLoader.load(this.projectRoot);
+      this.templateDiscovery = new TemplateDiscovery(this.projectRoot, this.config);
+      this.fragmentDiscovery = new FragmentDiscovery(this.projectRoot, this.config);
+      this.overrideDiscovery = new OverrideDiscovery(this.projectRoot);
+      this.moduleFilter = this.config.modules
+        ? new ActiveModuleFilter(this.projectRoot, this.config)
+        : undefined;
+    }
   }
 
   /**
    * Show status of all managed files
    */
   async showStatus(specificFile?: string): Promise<void> {
+    await this.init();
+
     console.log('📊 Config Management Status\n');
 
     // Discover all sources
@@ -43,8 +54,10 @@ export class StatusReporter {
     const allFragments = await this.fragmentDiscovery.discoverFragments();
     const overrides = await this.overrideDiscovery.discoverOverrides();
 
-    // Filter fragments
-    const fragments = this.moduleFilter.filterFragmentsWithConditions(allFragments);
+    // Filter fragments (if module filtering is enabled)
+    const fragments = this.moduleFilter
+      ? this.moduleFilter.filterFragmentsWithConditions(allFragments)
+      : allFragments;
 
     // Group by target
     const targetGroups = this.groupByTarget(templates, fragments, overrides);
@@ -178,11 +191,13 @@ export class StatusReporter {
     console.log(`  • ${generated.length} generated (multiple sources)`);
     console.log(`  • ${copied.length} copied (no-symlink mode)`);
 
-    // Show active modules
-    const activeModules = this.moduleFilter.getActiveModules();
-    if (activeModules.length > 0) {
-      console.log(`\nActive modules (${activeModules.length}):`);
-      console.log(`  ${activeModules.join(', ')}`);
+    // Show active modules (if module filtering is enabled)
+    if (this.moduleFilter) {
+      const activeModules = this.moduleFilter.getActiveModules();
+      if (activeModules.length > 0) {
+        console.log(`\nActive modules (${activeModules.length}):`);
+        console.log(`  ${activeModules.join(', ')}`);
+      }
     }
   }
 
