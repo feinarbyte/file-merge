@@ -52,6 +52,24 @@ export class HeaderGenerator {
    * Get the JSON comment style for a given file path
    */
   getJsonCommentStyle(targetPath: string): JsonCommentStyleType {
+    const ext = path.extname(targetPath).toLowerCase();
+    
+    // .jsonc files always use JSONC-style comments by default
+    // (that's the whole point of the .jsonc extension)
+    if (ext === ".jsonc") {
+      // Still allow explicit override via "none" pattern
+      if (this.jsonCommentStyle?.none) {
+        const relativePath = path.relative(this.projectRoot, targetPath);
+        const fileName = path.basename(targetPath);
+        for (const pattern of this.jsonCommentStyle.none) {
+          if (minimatch(relativePath, pattern) || minimatch(fileName, pattern)) {
+            return "none";
+          }
+        }
+      }
+      return "jsonc";
+    }
+
     if (!this.jsonCommentStyle) {
       return "$comment";
     }
