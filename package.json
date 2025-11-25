@@ -1,6 +1,6 @@
 {
   "name": "@feinarbyte/file-merge",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "File fragment merger - merge JSON, YAML, text files and more from templates, fragments, and overrides. Batteries included, dlx-ready.",
   "type": "module",
   "main": "./dist/cli/index.js",
