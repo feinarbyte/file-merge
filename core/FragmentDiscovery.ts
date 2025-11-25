@@ -20,30 +20,68 @@ export class FragmentDiscovery {
     /**
      * Discover all fragment files across the project
      * Returns unfiltered list (ActiveModuleFilter applies filtering later)
+     *
+     * Patterns are processed in order:
+     * - Positive patterns (without !) add files to the result set
+     * - Negative patterns (with !) remove files from the result set
+     *
+     * This allows later positive patterns to "re-include" files that were excluded.
+     * Example:
+     *   - "**\/*.fragment.*"           # include all
+     *   - "!atom-framework/modules/**" # exclude modules dir
+     *   - "atom-framework/modules/catalog.*.fragment.*"  # re-include catalog files
      */
     async discoverFragments(): Promise<Fragment[]> {
-        const searchLocations = this.config.fragmentPatterns ?? [];
+        const allPatterns = this.config.fragmentPatterns ?? [];
+        const baseIgnorePatterns = this.config.ignorePatterns ?? [];
 
-        const fragments: Fragment[] = [];
+        // Track included file paths (using Set for efficient add/remove)
+        const includedPaths = new Set<string>();
 
-        for (const pattern of searchLocations) {
-            const fullPattern = path.join(this.projectRoot, pattern);
-            const fragmentPaths = await glob(fullPattern, {
-                nodir: true,
-                ignore: this.config.ignorePatterns ?? [],
-            });
+        // Process patterns in order - this allows later patterns to override earlier ones
+        for (const pattern of allPatterns) {
+            if (pattern.startsWith("!")) {
+                // Negative pattern: remove matching files from result set
+                const negativePattern = pattern.slice(1);
+                const fullPattern = path.join(this.projectRoot, negativePattern);
 
-            fragmentPaths.sort();
+                const matchingPaths = await glob(fullPattern, {
+                    nodir: true,
+                    dot: true,
+                    ignore: baseIgnorePatterns.map((p) => path.join(this.projectRoot, p)),
+                });
 
-            for (const fragmentPath of fragmentPaths) {
-                try {
-                    const fragment = await this.loadFragment(fragmentPath);
-                    if (fragment) {
-                        fragments.push(fragment);
-                    }
-                } catch (error) {
-                    console.error(`❌ Failed to load fragment ${fragmentPath}:`, error);
+                for (const p of matchingPaths) {
+                    includedPaths.delete(p);
                 }
+            } else {
+                // Positive pattern: add matching files to result set
+                const fullPattern = path.join(this.projectRoot, pattern);
+
+                const matchingPaths = await glob(fullPattern, {
+                    nodir: true,
+                    dot: true,
+                    ignore: baseIgnorePatterns.map((p) => path.join(this.projectRoot, p)),
+                });
+
+                for (const p of matchingPaths) {
+                    includedPaths.add(p);
+                }
+            }
+        }
+
+        // Load all included fragments
+        const fragments: Fragment[] = [];
+        const sortedPaths = Array.from(includedPaths).sort();
+
+        for (const fragmentPath of sortedPaths) {
+            try {
+                const fragment = await this.loadFragment(fragmentPath);
+                if (fragment) {
+                    fragments.push(fragment);
+                }
+            } catch (error) {
+                console.error(`❌ Failed to load fragment ${fragmentPath}:`, error);
             }
         }
 
