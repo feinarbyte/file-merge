@@ -10,291 +10,290 @@ import { minimatch } from "minimatch";
 import type { JsonCommentStyleConfig, JsonCommentStyleType } from "./FileMergeConfig.js";
 
 export class HeaderGenerator {
-  private jsonCommentStyle?: JsonCommentStyleConfig;
+    private jsonCommentStyle?: JsonCommentStyleConfig;
 
-  constructor(private projectRoot: string, jsonCommentStyle?: JsonCommentStyleConfig) {
-    this.jsonCommentStyle = jsonCommentStyle;
-  }
-
-  /**
-   * Update the JSON comment style configuration
-   */
-  setJsonCommentStyle(config: JsonCommentStyleConfig | undefined): void {
-    this.jsonCommentStyle = config;
-  }
-
-  /**
-   * Generate header for a target file with source links
-   */
-  generate(targetPath: string, sourcePaths: string[]): string {
-    const ext = path.extname(targetPath).toLowerCase();
-    const relSources = sourcePaths.map((sourcePath) =>
-      this.formatSourcePath(targetPath, sourcePath),
-    );
-
-    // Detect comment style based on extension
-    // .code-workspace files are JSON files
-    if ([".json", ".jsonc", ".json5", ".code-workspace"].includes(ext)) {
-      const commentStyle = this.getJsonCommentStyle(targetPath);
-      return this.generateJsonHeaderWithStyle(relSources, commentStyle);
-    } else if ([".yaml", ".yml"].includes(ext)) {
-      return this.generateYamlHeader(relSources);
-    } else if (ext === ".toml") {
-      return this.generateYamlHeader(relSources); // TOML uses # comments like YAML
-    } else if ([".ts", ".js", ".mjs", ".cjs"].includes(ext)) {
-      return this.generateJsDocHeader(relSources);
-    } else {
-      return this.generateHashHeader(relSources);
+    constructor(
+        private projectRoot: string,
+        jsonCommentStyle?: JsonCommentStyleConfig,
+    ) {
+        this.jsonCommentStyle = jsonCommentStyle;
     }
-  }
 
-  /**
-   * Get the JSON comment style for a given file path
-   */
-  getJsonCommentStyle(targetPath: string): JsonCommentStyleType {
-    const ext = path.extname(targetPath).toLowerCase();
-    
-    // .jsonc files always use JSONC-style comments by default
-    // (that's the whole point of the .jsonc extension)
-    if (ext === ".jsonc") {
-      // Still allow explicit override via "none" pattern
-      if (this.jsonCommentStyle?.none) {
+    /**
+     * Update the JSON comment style configuration
+     */
+    setJsonCommentStyle(config: JsonCommentStyleConfig | undefined): void {
+        this.jsonCommentStyle = config;
+    }
+
+    /**
+     * Generate header for a target file with source links
+     */
+    generate(targetPath: string, sourcePaths: string[]): string {
+        const ext = path.extname(targetPath).toLowerCase();
+        const relSources = sourcePaths.map((sourcePath) =>
+            this.formatSourcePath(targetPath, sourcePath),
+        );
+
+        // Detect comment style based on extension
+        // .code-workspace files are JSON files
+        if ([".json", ".jsonc", ".json5", ".code-workspace"].includes(ext)) {
+            const commentStyle = this.getJsonCommentStyle(targetPath);
+            return this.generateJsonHeaderWithStyle(relSources, commentStyle);
+        } else if ([".yaml", ".yml"].includes(ext)) {
+            return this.generateYamlHeader(relSources);
+        } else if (ext === ".toml") {
+            return this.generateYamlHeader(relSources); // TOML uses # comments like YAML
+        } else if ([".ts", ".js", ".mjs", ".cjs"].includes(ext)) {
+            return this.generateJsDocHeader(relSources);
+        } else {
+            return this.generateHashHeader(relSources);
+        }
+    }
+
+    /**
+     * Get the JSON comment style for a given file path
+     */
+    getJsonCommentStyle(targetPath: string): JsonCommentStyleType {
+        const ext = path.extname(targetPath).toLowerCase();
+
+        // .jsonc files always use JSONC-style comments by default
+        // (that's the whole point of the .jsonc extension)
+        if (ext === ".jsonc") {
+            // Still allow explicit override via "none" pattern
+            if (this.jsonCommentStyle?.none) {
+                const relativePath = path.relative(this.projectRoot, targetPath);
+                const fileName = path.basename(targetPath);
+                for (const pattern of this.jsonCommentStyle.none) {
+                    if (minimatch(relativePath, pattern) || minimatch(fileName, pattern)) {
+                        return "none";
+                    }
+                }
+            }
+            return "jsonc";
+        }
+
+        if (!this.jsonCommentStyle) {
+            return "$comment";
+        }
+
+        // Get relative path for matching
         const relativePath = path.relative(this.projectRoot, targetPath);
         const fileName = path.basename(targetPath);
-        for (const pattern of this.jsonCommentStyle.none) {
-          if (minimatch(relativePath, pattern) || minimatch(fileName, pattern)) {
-            return "none";
-          }
-        }
-      }
-      return "jsonc";
-    }
 
-    if (!this.jsonCommentStyle) {
-      return "$comment";
-    }
-
-    // Get relative path for matching
-    const relativePath = path.relative(this.projectRoot, targetPath);
-    const fileName = path.basename(targetPath);
-
-    // Check "none" patterns first (highest priority for explicit exclusion)
-    if (this.jsonCommentStyle.none) {
-      for (const pattern of this.jsonCommentStyle.none) {
-        if (minimatch(relativePath, pattern) || minimatch(fileName, pattern)) {
-          return "none";
-        }
-      }
-    }
-
-    // Check "jsonc" patterns
-    if (this.jsonCommentStyle.jsonc) {
-      for (const pattern of this.jsonCommentStyle.jsonc) {
-        if (minimatch(relativePath, pattern) || minimatch(fileName, pattern)) {
-          return "jsonc";
-        }
-      }
-    }
-
-    // Return default or fallback to "$comment"
-    return this.jsonCommentStyle.default ?? "$comment";
-  }
-
-  /**
-   * Generate JSON header based on the specified style
-   */
-  private generateJsonHeaderWithStyle(sources: string[], style: JsonCommentStyleType): string {
-    switch (style) {
-      case "jsonc":
-        return this.generateJsoncHeader(sources);
-      case "none":
-        return "";
-      case "$comment":
-      default:
-        return this.generateJsonHeader(sources);
-    }
-  }
-
-  /**
-   * Generate JSONC header using // comments
-   * Returns comments to be placed BEFORE the JSON content
-   */
-  private generateJsoncHeader(sources: string[]): string {
-    const lines = [
-      "// 🤖 GENERATED FILE - DO NOT EDIT DIRECTLY",
-      "// This file is auto-generated by config-manager. Edit source files instead:",
-      ...sources.map((src) => `//   • ${src}`),
-      "// To regenerate: pnpm config:apply",
-    ];
-    return lines.join("\n");
-  }
-
-  /**
-   * Generate JSON header using $comment properties
-   * These are ignored by most JSON parsers but visible in editors
-   */
-  private generateJsonHeader(sources: string[]): string {
-    const header: Record<string, string> = {
-      $comment: "🤖 GENERATED FILE - DO NOT EDIT DIRECTLY",
-      $comment2:
-        "This file is auto-generated by config-manager. Edit source files instead:",
-    };
-
-    sources.forEach((src, i) => {
-      header[`$comment${i + 3}`] = `  • ${src}`;
-    });
-
-    header[`$comment${sources.length + 3}`] =
-      "To regenerate: pnpm config:apply";
-
-    return JSON.stringify(header, null, 2);
-  }
-
-  /**
-   * Generate YAML header using comments
-   */
-  private generateYamlHeader(sources: string[]): string {
-    const lines = [
-      "# 🤖 GENERATED FILE - DO NOT EDIT DIRECTLY",
-      "# This file is auto-generated by config-manager. Edit source files instead:",
-      ...sources.map((src) => `#   • ${src}`),
-      "# To regenerate: pnpm config:apply",
-      "", // Empty line before content
-    ];
-    return lines.join("\n");
-  }
-
-  /**
-   * Generate JSDoc-style header for TypeScript/JavaScript files
-   */
-  private generateJsDocHeader(sources: string[]): string {
-    const lines = [
-      "/**",
-      " * 🤖 GENERATED FILE - DO NOT EDIT DIRECTLY",
-      " *",
-      " * This file is auto-generated by config-manager. Edit source files instead:",
-      ...sources.map((src) => ` *   • ${src}`),
-      " *",
-      " * To regenerate: pnpm config:apply",
-      " */",
-    ];
-    return lines.join("\n");
-  }
-
-  /**
-   * Generate hash-comment header for text files
-   */
-  private generateHashHeader(sources: string[]): string {
-    const lines = [
-      "# Generated by config-manager from:",
-      ...sources.map((src) => `# - ${src}`),
-      "# To regenerate: pnpm config:apply",
-      "", // Empty line
-    ];
-    return lines.join("\n");
-  }
-
-  /**
-   * Check if content already has a generated header
-   */
-  hasGeneratedHeader(content: string): boolean {
-    return (
-      content.includes("🤖 GENERATED FILE") ||
-      content.includes("Generated by config-manager")
-    );
-  }
-
-  /**
-   * Remove existing generated header from content
-   */
-  removeHeader(content: string, ext: string): string {
-    if ([".json", ".jsonc", ".json5"].includes(ext)) {
-      // First, check if it's JSONC-style (starts with //)
-      const trimmedContent = content.trimStart();
-      if (trimmedContent.startsWith("//")) {
-        // Remove JSONC-style comments at the start
-        const lines = content.split("\n");
-        let i = 0;
-        while (i < lines.length) {
-          const line = lines[i].trim();
-          if (line.startsWith("//") || line === "") {
-            i++;
-            if (line.includes("To regenerate:")) {
-              // Found end of header, skip one more line if empty
-              if (i < lines.length && lines[i].trim() === "") {
-                i++;
-              }
-              break;
+        // Check "none" patterns first (highest priority for explicit exclusion)
+        if (this.jsonCommentStyle.none) {
+            for (const pattern of this.jsonCommentStyle.none) {
+                if (minimatch(relativePath, pattern) || minimatch(fileName, pattern)) {
+                    return "none";
+                }
             }
-          } else {
-            break;
-          }
         }
-        return lines.slice(i).join("\n");
-      }
-      
-      // For JSON with $comment properties, parse and remove them
-      try {
-        const parsed = JSON.parse(content);
-        const cleaned: Record<string, unknown> = {};
-        for (const [key, value] of Object.entries(parsed)) {
-          if (!key.startsWith("$comment")) {
-            cleaned[key] = value;
-          }
-        }
-        return JSON.stringify(cleaned, null, 2);
-      } catch {
-        return content;
-      }
-    } else {
-      // For other files, remove comment lines at the start
-      const lines = content.split("\n");
-      let i = 0;
 
-      // Skip comment lines
-      while (i < lines.length) {
-        const line = lines[i].trim();
-        if (
-          line.startsWith("#") ||
-          line.startsWith("//") ||
-          line.startsWith("/*") ||
-          line === ""
-        ) {
-          i++;
-          if (line.includes("To regenerate:")) {
-            // Found end of header, skip one more line if empty
-            if (i < lines.length && lines[i].trim() === "") {
-              i++;
+        // Check "jsonc" patterns
+        if (this.jsonCommentStyle.jsonc) {
+            for (const pattern of this.jsonCommentStyle.jsonc) {
+                if (minimatch(relativePath, pattern) || minimatch(fileName, pattern)) {
+                    return "jsonc";
+                }
             }
-            break;
-          }
+        }
+
+        // Return default or fallback to "$comment"
+        return this.jsonCommentStyle.default ?? "$comment";
+    }
+
+    /**
+     * Generate JSON header based on the specified style
+     */
+    private generateJsonHeaderWithStyle(sources: string[], style: JsonCommentStyleType): string {
+        switch (style) {
+            case "jsonc":
+                return this.generateJsoncHeader(sources);
+            case "none":
+                return "";
+            default:
+                return this.generateJsonHeader(sources);
+        }
+    }
+
+    /**
+     * Generate JSONC header using // comments
+     * Returns comments to be placed BEFORE the JSON content
+     */
+    private generateJsoncHeader(sources: string[]): string {
+        const lines = [
+            "// 🤖 GENERATED FILE - DO NOT EDIT DIRECTLY",
+            "// This file is auto-generated by config-manager. Edit source files instead:",
+            ...sources.map((src) => `//   • ${src}`),
+            "// To regenerate: pnpm config:apply",
+        ];
+        return lines.join("\n");
+    }
+
+    /**
+     * Generate JSON header using $comment properties
+     * These are ignored by most JSON parsers but visible in editors
+     */
+    private generateJsonHeader(sources: string[]): string {
+        const header: Record<string, string> = {
+            $comment: "🤖 GENERATED FILE - DO NOT EDIT DIRECTLY",
+            $comment2: "This file is auto-generated by config-manager. Edit source files instead:",
+        };
+
+        sources.forEach((src, i) => {
+            header[`$comment${i + 3}`] = `  • ${src}`;
+        });
+
+        header[`$comment${sources.length + 3}`] = "To regenerate: pnpm config:apply";
+
+        return JSON.stringify(header, null, 2);
+    }
+
+    /**
+     * Generate YAML header using comments
+     */
+    private generateYamlHeader(sources: string[]): string {
+        const lines = [
+            "# 🤖 GENERATED FILE - DO NOT EDIT DIRECTLY",
+            "# This file is auto-generated by config-manager. Edit source files instead:",
+            ...sources.map((src) => `#   • ${src}`),
+            "# To regenerate: pnpm config:apply",
+            "", // Empty line before content
+        ];
+        return lines.join("\n");
+    }
+
+    /**
+     * Generate JSDoc-style header for TypeScript/JavaScript files
+     */
+    private generateJsDocHeader(sources: string[]): string {
+        const lines = [
+            "/**",
+            " * 🤖 GENERATED FILE - DO NOT EDIT DIRECTLY",
+            " *",
+            " * This file is auto-generated by config-manager. Edit source files instead:",
+            ...sources.map((src) => ` *   • ${src}`),
+            " *",
+            " * To regenerate: pnpm config:apply",
+            " */",
+        ];
+        return lines.join("\n");
+    }
+
+    /**
+     * Generate hash-comment header for text files
+     */
+    private generateHashHeader(sources: string[]): string {
+        const lines = [
+            "# Generated by config-manager from:",
+            ...sources.map((src) => `# - ${src}`),
+            "# To regenerate: pnpm config:apply",
+            "", // Empty line
+        ];
+        return lines.join("\n");
+    }
+
+    /**
+     * Check if content already has a generated header
+     */
+    hasGeneratedHeader(content: string): boolean {
+        return (
+            content.includes("🤖 GENERATED FILE") || content.includes("Generated by config-manager")
+        );
+    }
+
+    /**
+     * Remove existing generated header from content
+     */
+    removeHeader(content: string, ext: string): string {
+        if ([".json", ".jsonc", ".json5"].includes(ext)) {
+            // First, check if it's JSONC-style (starts with //)
+            const trimmedContent = content.trimStart();
+            if (trimmedContent.startsWith("//")) {
+                // Remove JSONC-style comments at the start
+                const lines = content.split("\n");
+                let i = 0;
+                while (i < lines.length) {
+                    const line = lines[i].trim();
+                    if (line.startsWith("//") || line === "") {
+                        i++;
+                        if (line.includes("To regenerate:")) {
+                            // Found end of header, skip one more line if empty
+                            if (i < lines.length && lines[i].trim() === "") {
+                                i++;
+                            }
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                return lines.slice(i).join("\n");
+            }
+
+            // For JSON with $comment properties, parse and remove them
+            try {
+                const parsed = JSON.parse(content);
+                const cleaned: Record<string, unknown> = {};
+                for (const [key, value] of Object.entries(parsed)) {
+                    if (!key.startsWith("$comment")) {
+                        cleaned[key] = value;
+                    }
+                }
+                return JSON.stringify(cleaned, null, 2);
+            } catch {
+                return content;
+            }
         } else {
-          break;
+            // For other files, remove comment lines at the start
+            const lines = content.split("\n");
+            let i = 0;
+
+            // Skip comment lines
+            while (i < lines.length) {
+                const line = lines[i].trim();
+                if (
+                    line.startsWith("#") ||
+                    line.startsWith("//") ||
+                    line.startsWith("/*") ||
+                    line === ""
+                ) {
+                    i++;
+                    if (line.includes("To regenerate:")) {
+                        // Found end of header, skip one more line if empty
+                        if (i < lines.length && lines[i].trim() === "") {
+                            i++;
+                        }
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            return lines.slice(i).join("\n");
         }
-      }
-
-      return lines.slice(i).join("\n");
-    }
-  }
-
-  /**
-   * Format file:// link relative to the target file location
-   */
-  private formatSourcePath(targetPath: string, sourcePath: string): string {
-    const targetDir = path.dirname(targetPath);
-    let relativePath = path.relative(targetDir, sourcePath) || ".";
-
-    // Normalize to POSIX-style separators for VS Code file:// links
-    relativePath = relativePath.replace(/\\/g, "/");
-
-    if (relativePath === ".") {
-      relativePath = "./";
-    } else if (relativePath.startsWith("../")) {
-      relativePath = `./${relativePath}`;
-    } else if (!relativePath.startsWith("./")) {
-      relativePath = `./${relativePath}`;
     }
 
-    return `file://${relativePath}`;
-  }
+    /**
+     * Format file:// link relative to the target file location
+     */
+    private formatSourcePath(targetPath: string, sourcePath: string): string {
+        const targetDir = path.dirname(targetPath);
+        let relativePath = path.relative(targetDir, sourcePath) || ".";
+
+        // Normalize to POSIX-style separators for VS Code file:// links
+        relativePath = relativePath.replace(/\\/g, "/");
+
+        if (relativePath === ".") {
+            relativePath = "./";
+        } else if (relativePath.startsWith("../")) {
+            relativePath = `./${relativePath}`;
+        } else if (!relativePath.startsWith("./")) {
+            relativePath = `./${relativePath}`;
+        }
+
+        return `file://${relativePath}`;
+    }
 }
