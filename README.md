@@ -7,14 +7,14 @@ Merge files from templates, fragments, and overrides with intelligent strategies
 ## Installation
 
 ```bash
-# Using pnpm dlx
+# Using pnpm dlx (recommended)
 pnpm dlx @feinarbyte/file-merge
 
 # Using npx
 npx @feinarbyte/file-merge
 
 # Or install globally
-npm install -g @feinarbyte/file-merge
+pnpm add -g @feinarbyte/file-merge
 ```
 
 ## Configuration
