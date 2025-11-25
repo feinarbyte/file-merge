@@ -31,3 +31,18 @@ ignorePatterns:
 #   activeDir: modules
 #   sourceDir: available-modules
 
+# JSON comment style configuration
+# Controls how generated headers are added to JSON files
+# Options: "$comment" (default), "jsonc", "none"
+# - "$comment": Add "$comment", "$comment2", etc. keys at top of JSON object
+# - "jsonc": Add // comments before the opening { (for JSONC-compatible parsers)
+# - "none": No header comment
+# jsonCommentStyle:
+#   default: "$comment"           # Default style for JSON files
+#   jsonc:                        # Files matching these patterns use // comments
+#     - "biome.json"
+#     - "tsconfig*.json"
+#     - ".vscode/**/*.json"
+#     - "turbo.json"
+#   none:                         # Files matching these patterns have no header
+#     - "package.json"

@@ -5,6 +5,33 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
+/**
+ * JSON comment style options
+ */
+export type JsonCommentStyleType = "$comment" | "jsonc" | "none";
+
+/**
+ * JSON comment style configuration
+ */
+export interface JsonCommentStyleConfig {
+  /**
+   * Default comment style for JSON files
+   * @default "$comment"
+   */
+  default?: JsonCommentStyleType;
+  
+  /**
+   * Glob patterns for files that should use JSONC-style comments (// ...)
+   * Only applies to .json files
+   */
+  jsonc?: string[];
+  
+  /**
+   * Glob patterns for files that should have no header comment
+   */
+  none?: string[];
+}
+
 export interface FileMergeConfig {
   /**
    * Directory containing template files with __ prefix
@@ -53,6 +80,13 @@ export interface FileMergeConfig {
    * If not specified will be derived from templatesDir and fragmentPatterns
    */
   watchPatterns?: string[];
+
+  /**
+   * JSON comment style configuration
+   * Controls how generated headers are added to JSON files
+   * @default { default: "$comment" }
+   */
+  jsonCommentStyle?: JsonCommentStyleConfig;
 }
 
 export class FileMergeConfigLoader {
@@ -145,6 +179,7 @@ export class FileMergeConfigLoader {
           sourceDir: userConfig.modules?.sourceDir ?? this.DEFAULTS.modules!.sourceDir,
         } : undefined,
         watchPatterns: userConfig.watchPatterns ?? this.deriveWatchPatterns(userConfig),
+        jsonCommentStyle: userConfig.jsonCommentStyle,
       };
 
       return config;
@@ -262,7 +297,19 @@ export class FileMergeConfigLoader {
                 '# Uncomment if you need symlink-based module filtering\n' +
                 '# modules:\n' +
                 '#   activeDir: modules\n' +
-                '#   sourceDir: available-modules\n';
+                '#   sourceDir: available-modules\n\n' +
+                '# JSON comment style configuration\n' +
+                '# Controls how generated headers are added to JSON files\n' +
+                '# Options: "$comment" (default), "jsonc", "none"\n' +
+                '# jsonCommentStyle:\n' +
+                '#   default: "$comment"           # Default style for JSON files\n' +
+                '#   jsonc:                        # Files matching these patterns use // comments\n' +
+                '#     - "biome.json"\n' +
+                '#     - "tsconfig*.json"\n' +
+                '#     - ".vscode/**/*.json"\n' +
+                '#     - "turbo.json"\n' +
+                '#   none:                         # Files matching these patterns have no header\n' +
+                '#     - "package.json"\n';
     } else {
       content = JSON.stringify(exampleConfig, null, 2) + "\n";
     }

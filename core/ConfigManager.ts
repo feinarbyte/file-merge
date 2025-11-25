@@ -62,7 +62,7 @@ export class ConfigManager {
     this.moduleFilter = this.config.modules 
       ? new ActiveModuleFilter(projectRoot, this.config)
       : undefined;
-    this.headerGenerator = new HeaderGenerator(projectRoot);
+    this.headerGenerator = new HeaderGenerator(projectRoot, this.config.jsonCommentStyle);
   }
 
   /**
@@ -304,15 +304,30 @@ export class ConfigManager {
 
     // .code-workspace files are JSON files
     if ([".json", ".jsonc", ".json5", ".code-workspace"].includes(ext)) {
-      // For JSON, merge header object with content
-      const headerObj = JSON.parse(header);
-      const combined = {
-        ...(typeof headerObj === "object" && headerObj !== null
-          ? headerObj
-          : {}),
-        ...(typeof final === "object" && final !== null ? final : {}),
-      };
-      await fs.writeFile(targetPath, `${JSON.stringify(combined, null, 2)}\n`);
+      const jsonCommentStyle = this.headerGenerator.getJsonCommentStyle(targetPath);
+      const jsonContent = JSON.stringify(
+        typeof final === "object" && final !== null ? final : {},
+        null,
+        2
+      );
+      
+      if (jsonCommentStyle === "jsonc") {
+        // JSONC: prepend // comments before the JSON
+        await fs.writeFile(targetPath, `${header}\n${jsonContent}\n`);
+      } else if (jsonCommentStyle === "none") {
+        // No header
+        await fs.writeFile(targetPath, `${jsonContent}\n`);
+      } else {
+        // $comment: merge header object with content
+        const headerObj = JSON.parse(header);
+        const combined = {
+          ...(typeof headerObj === "object" && headerObj !== null
+            ? headerObj
+            : {}),
+          ...(typeof final === "object" && final !== null ? final : {}),
+        };
+        await fs.writeFile(targetPath, `${JSON.stringify(combined, null, 2)}\n`);
+      }
     } else if ([".yaml", ".yml"].includes(ext)) {
       // For YAML, prepend header comments
       const yamlOptions = {
