@@ -192,32 +192,57 @@ If `ENV=production`, this fragment will target `config/production/settings.json`
 - `append-lines` - Line-by-line appending (for .gitignore, etc.)
 - `replace` - Last source wins
 
-## Publishing
+## Development
 
-To publish this package to npm:
+This project uses [mise](https://mise.jdx.dev/) for tool version management.
+
+```bash
+# Install tools (node, pnpm)
+mise install
+
+# Install dependencies
+pnpm install
+
+# Build
+pnpm run build
+
+# Watch mode
+pnpm run dev
+```
+
+## Releasing
+
+Releases are automated via GitLab CI. When a version tag is pushed, the pipeline publishes the package to npm.
+
+```bash
+# Patch release (bug fixes): 2.0.1 → 2.0.2
+pnpm run release:patch
+
+# Minor release (new features): 2.0.1 → 2.1.0
+pnpm run release:minor
+
+# Major release (breaking changes): 2.0.1 → 3.0.0
+pnpm run release:major
+```
+
+Each release command will:
+1. Bump the version in `package.json`
+2. Create a git commit with message `chore(release): vX.Y.Z`
+3. Create a git tag `vX.Y.Z`
+4. Push the commit and tag to origin
+
+The GitLab CI pipeline then automatically publishes to npm.
+
+### Manual Publishing
+
+If you need to publish manually:
 
 ```bash
 # Make sure you're logged in to npm with access to @feinarbyte scope
-npm login
-
-# Build the package
-npm run build
+pnpm login
 
 # Publish (will automatically build via prepublishOnly)
-npm publish --access public
-```
-
-## Development
-
-```bash
-# Install dependencies
-npm install
-
-# Build
-npm run build
-
-# Watch mode
-npm run dev
+pnpm publish --access public
 ```
 
 ## Migration from Hardcoded Paths

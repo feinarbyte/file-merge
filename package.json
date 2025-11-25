@@ -16,8 +16,11 @@
   ],
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "npm run build",
-    "dev": "tsc --watch"
+    "prepublishOnly": "pnpm run build",
+    "dev": "tsc --watch",
+    "release:patch": "pnpm version patch -m 'chore(release): %s' && git push && git push --tags",
+    "release:minor": "pnpm version minor -m 'chore(release): %s' && git push && git push --tags",
+    "release:major": "pnpm version major -m 'chore(release): %s' && git push && git push --tags"
   },
   "keywords": [
     "file",
@@ -36,7 +39,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/DerKorb/file-merge.git"
+    "url": "https://github.com/feinarbyte/file-merge.git"
   },
   "packageManager": "pnpm@10.23.0",
   "engines": {
