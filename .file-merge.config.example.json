@@ -1,6 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema",
   "description": "Example configuration for @feinarbyte/file-merge",
+  "noSymlink": false,
+  "copyPatterns": [
+    ".gitignore"
+  ],
   "templatesDir": "config-templates",
   "fragmentPatterns": [
     "packages/**/*.fragment.*",

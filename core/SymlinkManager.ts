@@ -68,6 +68,27 @@ export class SymlinkManager {
      * Used when _copy: true is set
      */
     async copyFile(sourcePath: string, targetPath: string): Promise<void> {
+        // Remove existing file/symlink if it exists
+        // (Important: copying onto a symlink would overwrite the symlink target)
+        try {
+            const stats = await fs.lstat(targetPath);
+            if (stats.isSymbolicLink() || stats.isFile()) {
+                await fs.unlink(targetPath);
+            } else if (stats.isDirectory()) {
+                throw new Error(`Cannot replace ${targetPath}: is a directory`);
+            }
+        } catch (error: unknown) {
+            if (
+                typeof error === "object" &&
+                error !== null &&
+                "code" in error &&
+                error.code !== "ENOENT"
+            ) {
+                throw error;
+            }
+            // File doesn't exist, that's fine
+        }
+
         // Ensure target directory exists
         await fs.mkdir(path.dirname(targetPath), { recursive: true });
 

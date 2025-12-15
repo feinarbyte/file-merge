@@ -34,6 +34,26 @@ export interface JsonCommentStyleConfig {
 
 export interface FileMergeConfig {
     /**
+     * Disable symlinks for single-source outputs and copy files instead.
+     * Useful in environments where symlinks are undesirable or unsupported.
+     * @default false
+     */
+    noSymlink?: boolean;
+
+    /**
+     * Glob patterns (relative to project root) for targets that should be copied instead of symlinked
+     * when they have a single source (typically templates).
+     *
+     * Example:
+     *  - ".gitignore"
+     *  - ".gitattributes"
+     *  - ".npmrc"
+     *
+     * @default []
+     */
+    copyPatterns?: string[];
+
+    /**
      * Directory containing template files with __ prefix
      * Relative to project root
      * @default "atom-framework/config-templates"
@@ -100,6 +120,8 @@ export class FileMergeConfigLoader {
      * Default configuration (for backward compatibility with atom-framework)
      */
     private static readonly DEFAULTS: FileMergeConfig = {
+        noSymlink: false,
+        copyPatterns: [],
         templatesDir: "atom-framework/config-templates",
         fragmentPatterns: [
             "atom-framework/**/*.fragment.*",
@@ -171,6 +193,8 @@ export class FileMergeConfigLoader {
 
             // Merge with defaults, but keep modules undefined if not specified by user
             const config: FileMergeConfig = {
+                noSymlink: userConfig.noSymlink ?? this.DEFAULTS.noSymlink!,
+                copyPatterns: userConfig.copyPatterns ?? this.DEFAULTS.copyPatterns!,
                 templatesDir: userConfig.templatesDir ?? this.DEFAULTS.templatesDir!,
                 fragmentPatterns: userConfig.fragmentPatterns ?? this.DEFAULTS.fragmentPatterns!,
                 ignorePatterns: userConfig.ignorePatterns ?? this.DEFAULTS.ignorePatterns!,
@@ -267,6 +291,8 @@ export class FileMergeConfigLoader {
         }
 
         const exampleConfig: FileMergeConfig = {
+            noSymlink: false,
+            copyPatterns: [],
             templatesDir: "config-templates",
             fragmentPatterns: ["**/*.fragment.*", "!node_modules/**", "!dist/**"],
             ignorePatterns: ["**/node_modules/**", "**/dist/**", "**/.git/**"],
@@ -278,6 +304,13 @@ export class FileMergeConfigLoader {
             content =
                 "# File-merge configuration\n" +
                 "# Supports both YAML and JSON formats\n\n" +
+                "# Copy single-source outputs instead of creating symlinks\n" +
+                "# noSymlink: false\n\n" +
+                "# Copy these target files (per-file), even if they have a single template source\n" +
+                "# Useful for files you want committed as regular files (e.g. .gitignore)\n" +
+                "# copyPatterns:\n" +
+                '#   - ".gitignore"\n' +
+                '#   - ".gitattributes"\n\n' +
                 "# Directory containing template files with __ prefix\n" +
                 "templatesDir: config-templates\n\n" +
                 "# Glob patterns for discovering fragment files\n" +

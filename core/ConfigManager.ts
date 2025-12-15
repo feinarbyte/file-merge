@@ -7,6 +7,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import YAML from "yaml";
+import { minimatch } from "minimatch";
 import { getStrategy } from "../strategies/index.js";
 import { ActiveModuleFilter } from "./ActiveModuleFilter.js";
 import { type FileMergeConfig, FileMergeConfigLoader } from "./FileMergeConfig.js";
@@ -207,9 +208,30 @@ export class ConfigManager {
         }
 
         if (sources.length === 1) {
-            // Single source - symlink or copy
+            // Single source
             const source = sources[0];
-            const shouldCopy = source.metadata?._copy || false;
+
+            // Special case: a single fragment should be GENERATED (not symlinked to the fragment file),
+            // because fragments often include metadata and aren't intended to be the canonical file on disk.
+            if (source.type === "fragment") {
+                if (verbose) {
+                    console.log(`🤖 ${relativePath} (single fragment source)`);
+                }
+                if (!dryRun) {
+                    await this.mergeAndWrite(targetPath, sources, activeModules);
+                }
+                return;
+            }
+
+            const copyPatterns = this.config.copyPatterns ?? [];
+            const shouldCopyByPattern =
+                copyPatterns.length > 0 &&
+                copyPatterns.some(
+                    (pattern) =>
+                        minimatch(relativePath, pattern) ||
+                        minimatch(path.basename(relativePath), pattern),
+                );
+            const shouldCopy = Boolean(this.config.noSymlink || source.metadata?._copy || shouldCopyByPattern);
 
             if (verbose) {
                 console.log(

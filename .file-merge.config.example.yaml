@@ -1,6 +1,14 @@
 # File-merge configuration
 # Supports both YAML and JSON formats
 
+# Copy single-source outputs instead of creating symlinks (global)
+# noSymlink: false
+
+# Copy these target files (per-file) even if they have a single template source
+# Useful for files you want committed as regular files (e.g. .gitignore)
+copyPatterns:
+  - ".gitignore"
+
 # Directory containing template files with __ prefix
 templatesDir: config-templates
 

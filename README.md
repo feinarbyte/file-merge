@@ -70,6 +70,8 @@ ignorePatterns:
 
 ### Configuration Options
 
+- **`noSymlink`** - Copy single-source outputs instead of creating symlinks (default: `false`)
+- **`copyPatterns`** - Per-file glob patterns (relative to project root) for targets that should be **copied** instead of symlinked when they have a single source (default: `[]`)
 - **`templatesDir`** - Directory containing template files with `__` prefix (default: `"atom-framework/config-templates"`)
 - **`fragmentPatterns`** - Glob patterns to discover fragment files. **Supports negation with `!` prefix**
   - Example: `["**/*.fragment.*", "!node_modules/**", "!folderA/**", "folderA/catalog.*.fragment.*"]`
@@ -78,6 +80,17 @@ ignorePatterns:
   - `activeDir` - Directory where active modules are symlinked
   - `sourceDir` - Directory containing available modules
 - **`watchPatterns`** - Patterns to watch in watch mode (optional, auto-derived if not set)
+
+### Copy instead of symlink (per file)
+
+By default, targets with a **single source** (typically a template) are symlinked to keep a single canonical file.
+If you need a **real file** (for example `.gitignore` in some environments), configure per-target copy rules:
+
+```yaml
+# .file-merge.config.yaml
+copyPatterns:
+  - ".gitignore"
+```
 
 ### Config File Formats
 
