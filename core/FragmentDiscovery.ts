@@ -214,6 +214,8 @@ export class FragmentDiscovery {
             _targetPath: contentObj._targetPath as string | string[],
         };
 
+        if (contentObj.__gitlabJobPrefix !== undefined)
+            metadata.__gitlabJobPrefix = contentObj.__gitlabJobPrefix as string;
         if (contentObj._mergeStrategy !== undefined)
             metadata._mergeStrategy = contentObj._mergeStrategy as string;
         if (contentObj._priority !== undefined) metadata._priority = contentObj._priority as number;
@@ -264,11 +266,13 @@ export class FragmentDiscovery {
 
         const lines = content.split("\n");
         for (const line of lines) {
-            const match = line.match(/^_(\w+)=(.+)$/);
+            const match = line.match(/^_+(\w+)=(.+)$/);
             if (match) {
                 const [, key, value] = match;
                 if (key === "targetPath") {
                     metadata._targetPath = value.trim();
+                } else if (key === "gitlabJobPrefix") {
+                    metadata.__gitlabJobPrefix = value.trim();
                 } else if (key === "mergeStrategy") {
                     metadata._mergeStrategy = value.trim();
                 } else if (key === "priority") {
@@ -289,7 +293,7 @@ export class FragmentDiscovery {
      */
     private stripMetadata(content: string): string {
         const lines = content.split("\n");
-        const filtered = lines.filter((line) => !line.match(/^_\w+=/));
+        const filtered = lines.filter((line) => !line.match(/^_+\w+=/));
         return filtered.join("\n");
     }
 }

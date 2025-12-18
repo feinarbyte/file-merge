@@ -128,6 +128,19 @@ export class Validator {
                     }
                 }
 
+                // GitLab CI: validate __gitlabJobPrefix type if present
+                // (Runtime can be non-string if YAML/JSON provides a number/bool; FragmentDiscovery casts but doesn't coerce.)
+                const gitlabJobPrefix = (fragment.metadata as any).__gitlabJobPrefix;
+                if (gitlabJobPrefix !== undefined && typeof gitlabJobPrefix !== "string") {
+                    this.addError({
+                        severity: ErrorSeverity.WARNING,
+                        code: "INVALID_GITLAB_JOB_PREFIX",
+                        message: `__gitlabJobPrefix must be a string (got ${typeof gitlabJobPrefix})`,
+                        file: fragment.path,
+                        suggestion: 'Use "__gitlabJobPrefix: \\"prefix\\"" or "__gitlabJobPrefix: \\"\\"" to disable prefixing',
+                    });
+                }
+
                 // Check conditional dependencies
                 if (fragment.metadata._conditions?.activeModules) {
                     for (const requiredModule of fragment.metadata._conditions.activeModules) {

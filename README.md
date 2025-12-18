@@ -205,6 +205,22 @@ If `ENV=production`, this fragment will target `config/production/settings.json`
 - `append-lines` - Line-by-line appending (for .gitignore, etc.)
 - `replace` - Last source wins
 
+### GitLab CI job name prefix override (per fragment)
+
+When merging `.gitlab-ci.yml` using the `gitlab-ci` strategy, file-merge normally prefixes jobs based on the fragment file’s folder hierarchy.
+
+You can override this per fragment using `__gitlabJobPrefix`:
+
+```yaml
+_targetPath: .gitlab-ci.yml
+__gitlabJobPrefix: deploy   # "" disables prefixing
+
+build:
+  stage: build
+  script:
+    - echo "hello"
+```
+
 ## Development
 
 This project uses [mise](https://mise.jdx.dev/) for tool version management.

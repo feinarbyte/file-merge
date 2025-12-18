@@ -278,6 +278,7 @@ export class ConfigManager {
             targetPath,
             relativePath: path.relative(this.options.projectRoot, targetPath),
             sourcePaths: sources.map((s) => s.path),
+            sourceMetadata: sources.map((s) => s.metadata),
             activeModules,
         };
 
