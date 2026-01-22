@@ -261,6 +261,53 @@ export class ConfigManager {
     /**
      * Merge multiple sources and write the result
      */
+    private async writeGeneratedFileIfChanged(
+        targetPath: string,
+        nextContent: string,
+    ): Promise<"written" | "skipped"> {
+        const nextBuffer = Buffer.from(nextContent, "utf-8");
+
+        let stats: import("node:fs").Stats | undefined;
+        try {
+            stats = await fs.lstat(targetPath);
+        } catch (error: unknown) {
+            if (
+                typeof error === "object" &&
+                error !== null &&
+                "code" in error &&
+                error.code === "ENOENT"
+            ) {
+                // File doesn't exist yet - we'll write it below
+                stats = undefined;
+            } else {
+                throw error;
+            }
+        }
+
+        if (stats?.isDirectory()) {
+            throw new Error(`Cannot write ${targetPath}: is a directory`);
+        }
+
+        // If target is a symlink, always replace with a real file (mode correctness).
+        if (stats?.isSymbolicLink()) {
+            await fs.unlink(targetPath);
+            await fs.mkdir(path.dirname(targetPath), { recursive: true });
+            await fs.writeFile(targetPath, nextBuffer);
+            return "written";
+        }
+
+        if (stats?.isFile()) {
+            const existingBuffer = await fs.readFile(targetPath);
+            if (existingBuffer.equals(nextBuffer)) {
+                return "skipped";
+            }
+        }
+
+        await fs.mkdir(path.dirname(targetPath), { recursive: true });
+        await fs.writeFile(targetPath, nextBuffer);
+        return "written";
+    }
+
     private async mergeAndWrite(
         targetPath: string,
         sources: Source[],
@@ -294,27 +341,7 @@ export class ConfigManager {
             targetPath,
             sources.map((s) => s.path),
         );
-
-        // Remove existing symlink if present (otherwise writes will follow the symlink)
-        try {
-            const stats = await fs.lstat(targetPath);
-            if (stats.isSymbolicLink()) {
-                await fs.unlink(targetPath);
-            }
-        } catch (error: unknown) {
-            // File doesn't exist - that's fine
-            if (
-                typeof error === "object" &&
-                error !== null &&
-                "code" in error &&
-                error.code !== "ENOENT"
-            ) {
-                throw error;
-            }
-        }
-
-        // Write file
-        await fs.mkdir(path.dirname(targetPath), { recursive: true });
+        const relativePath = path.relative(this.options.projectRoot, targetPath);
 
         // .code-workspace files are JSON files
         if ([".json", ".jsonc", ".json5", ".code-workspace"].includes(ext)) {
@@ -327,10 +354,19 @@ export class ConfigManager {
 
             if (jsonCommentStyle === "jsonc") {
                 // JSONC: prepend // comments before the JSON
-                await fs.writeFile(targetPath, `${header}\n${jsonContent}\n`);
+                const result = await this.writeGeneratedFileIfChanged(
+                    targetPath,
+                    `${header}\n${jsonContent}\n`,
+                );
+                if (result === "skipped" && this.options.verbose) {
+                    console.log(`  ⏭️  ${relativePath} unchanged`);
+                }
             } else if (jsonCommentStyle === "none") {
                 // No header
-                await fs.writeFile(targetPath, `${jsonContent}\n`);
+                const result = await this.writeGeneratedFileIfChanged(targetPath, `${jsonContent}\n`);
+                if (result === "skipped" && this.options.verbose) {
+                    console.log(`  ⏭️  ${relativePath} unchanged`);
+                }
             } else {
                 // $comment: merge header object with content
                 const headerObj = JSON.parse(header);
@@ -338,7 +374,13 @@ export class ConfigManager {
                     ...(typeof headerObj === "object" && headerObj !== null ? headerObj : {}),
                     ...(typeof final === "object" && final !== null ? final : {}),
                 };
-                await fs.writeFile(targetPath, `${JSON.stringify(combined, null, 2)}\n`);
+                const result = await this.writeGeneratedFileIfChanged(
+                    targetPath,
+                    `${JSON.stringify(combined, null, 2)}\n`,
+                );
+                if (result === "skipped" && this.options.verbose) {
+                    console.log(`  ⏭️  ${relativePath} unchanged`);
+                }
             }
         } else if ([".yaml", ".yml"].includes(ext)) {
             // For YAML, prepend header comments
@@ -348,21 +390,33 @@ export class ConfigManager {
                 sortKeys: false,
             };
             const yamlContent = YAML.stringify(final, yamlOptions);
-            await fs.writeFile(targetPath, header + yamlContent);
+            const result = await this.writeGeneratedFileIfChanged(targetPath, header + yamlContent);
+            if (result === "skipped" && this.options.verbose) {
+                console.log(`  ⏭️  ${relativePath} unchanged`);
+            }
         } else if (ext === ".toml") {
             // For TOML, prepend header comments and stringify
             const TOML = await import("@iarna/toml");
             // TOML.stringify expects JsonMap, cast final appropriately
             const tomlContent = TOML.stringify(final as any);
-            await fs.writeFile(targetPath, header + tomlContent);
+            const result = await this.writeGeneratedFileIfChanged(targetPath, header + tomlContent);
+            if (result === "skipped" && this.options.verbose) {
+                console.log(`  ⏭️  ${relativePath} unchanged`);
+            }
         } else if ([".ts", ".js", ".mjs", ".cjs"].includes(ext)) {
             // For JS/TS, prepend JSDoc header
             const content = typeof final === "string" ? final : JSON.stringify(final, null, 2);
-            await fs.writeFile(targetPath, `${header}\n${content}`);
+            const result = await this.writeGeneratedFileIfChanged(targetPath, `${header}\n${content}`);
+            if (result === "skipped" && this.options.verbose) {
+                console.log(`  ⏭️  ${relativePath} unchanged`);
+            }
         } else {
             // For text files, prepend hash header
             const content = typeof final === "string" ? final : JSON.stringify(final, null, 2);
-            await fs.writeFile(targetPath, header + content);
+            const result = await this.writeGeneratedFileIfChanged(targetPath, header + content);
+            if (result === "skipped" && this.options.verbose) {
+                console.log(`  ⏭️  ${relativePath} unchanged`);
+            }
         }
     }
 }

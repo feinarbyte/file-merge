@@ -13,6 +13,11 @@ export class SymlinkManager {
      * Removes existing file/symlink if present
      */
     async createSymlink(sourcePath: string, targetPath: string): Promise<void> {
+        // If it's already the correct symlink, avoid churn (and filesystem watcher events).
+        if (await this.isSymlinkTo(targetPath, sourcePath)) {
+            return;
+        }
+
         // Remove existing file/symlink if it exists
         try {
             const stats = await fs.lstat(targetPath);
@@ -68,12 +73,16 @@ export class SymlinkManager {
      * Used when _copy: true is set
      */
     async copyFile(sourcePath: string, targetPath: string): Promise<void> {
-        // Remove existing file/symlink if it exists
+        // Remove existing symlink if it exists
         // (Important: copying onto a symlink would overwrite the symlink target)
+        let stats: import("node:fs").Stats | undefined;
         try {
-            const stats = await fs.lstat(targetPath);
+            stats = await fs.lstat(targetPath);
             if (stats.isSymbolicLink() || stats.isFile()) {
-                await fs.unlink(targetPath);
+                if (stats.isSymbolicLink()) {
+                    await fs.unlink(targetPath);
+                    stats = undefined;
+                }
             } else if (stats.isDirectory()) {
                 throw new Error(`Cannot replace ${targetPath}: is a directory`);
             }
@@ -89,7 +98,18 @@ export class SymlinkManager {
             // File doesn't exist, that's fine
         }
 
-        // Ensure target directory exists
+        // If target is a regular file, skip copying when content is identical.
+        if (stats?.isFile()) {
+            const [sourceBuffer, targetBuffer] = await Promise.all([
+                fs.readFile(sourcePath),
+                fs.readFile(targetPath),
+            ]);
+            if (sourceBuffer.equals(targetBuffer)) {
+                return;
+            }
+        }
+
+        // Ensure target directory exists (only when we actually copy)
         await fs.mkdir(path.dirname(targetPath), { recursive: true });
 
         // Copy file

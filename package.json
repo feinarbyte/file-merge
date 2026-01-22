@@ -16,6 +16,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "test": "tsc && node --test test/**/*.test.js",
     "prepublishOnly": "pnpm run build",
     "dev": "tsc --watch",
     "format": "biome format --write .",
