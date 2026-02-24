@@ -113,9 +113,37 @@ file-merge apply
 
 Options:
 - `--dry-run` - Show what would be generated without writing files
+- `--check` - Check if apply would change files (no writes, exits with code 1 when changes are needed)
 - `--verbose` - Detailed output
 - `--filter <patterns...>` - Only process files matching patterns
 - `--config <path>` - Path to config file (default: auto-detect `.yaml`, `.yml`, or `.json`)
+
+### Check Mode (CI / pre-commit)
+
+```bash
+file-merge apply --check
+```
+
+`--check` runs the same merge logic as `apply` but does not write files.
+
+- Exit code `0`: all managed targets already match the expected state.
+- Exit code `1`: one or more managed targets would change.
+- Output includes `CHANGED <path>` lines and a final summary (`N changed, M unchanged, T total`).
+
+Use `--dry-run` when you want informational output only without failing automation.
+
+**CI example:**
+```bash
+file-merge validate
+file-merge apply --check
+```
+
+**Pre-commit hook example (`.git/hooks/pre-commit`):**
+```bash
+#!/bin/sh
+set -e
+file-merge apply --check
+```
 
 ### Watch Mode
 
