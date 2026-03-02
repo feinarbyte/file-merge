@@ -139,6 +139,8 @@ export interface ConfigManagerOptions {
   projectRoot: string;
   /** Dry run mode (don't write files) */
   dryRun?: boolean;
+  /** Check mode (no writes, report pending changes via apply result) */
+  check?: boolean;
   /** Verbose output */
   verbose?: boolean;
   /** Filter patterns for files to process */
@@ -147,4 +149,13 @@ export interface ConfigManagerOptions {
   config?: import('./FileMergeConfig.js').FileMergeConfig;
   /** Path to config file (overrides default .file-merge.config.json) */
   configPath?: string;
+}
+
+export interface ApplyResult {
+  /** Number of target files processed */
+  processedTargets: number;
+  /** Relative target paths that differ from desired state */
+  changedTargets: string[];
+  /** Relative target paths that already match desired state */
+  unchangedTargets: string[];
 }

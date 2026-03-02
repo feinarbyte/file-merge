@@ -16,6 +16,8 @@ import { SymlinkManager } from "./SymlinkManager.js";
 import { TemplateDiscovery } from "./TemplateDiscovery.js";
 import { FileMergeConfigLoader, type FileMergeConfig } from "./FileMergeConfig.js";
 import type {
+  ApplyResult,
+  ConfigContent,
   ConfigManagerOptions,
   Fragment,
   MergeContext,
@@ -68,15 +70,20 @@ export class ConfigManager {
   /**
    * Apply configuration from templates, fragments, and overrides
    */
-  async apply(): Promise<void> {
+  async apply(): Promise<ApplyResult> {
     // Ensure config is loaded
     if (!this.config) {
       await this.init();
     }
 
-    const { verbose } = this.options;
+    const { verbose, check } = this.options;
+    const isCheckMode = Boolean(check);
+    const changedTargets: string[] = [];
+    const unchangedTargets: string[] = [];
 
-    console.log("🔍 Discovering configuration sources...\n");
+    if (!isCheckMode) {
+      console.log("🔍 Discovering configuration sources...\n");
+    }
 
     // 1. Discovery phase
     const templates = await this.templateDiscovery.discoverTemplates();
@@ -110,7 +117,9 @@ export class ConfigManager {
     // 3. Group sources by target path
     const targetGroups = this.groupByTarget(templates, fragments, overrides);
 
-    console.log(`📋 Processing ${targetGroups.size} configuration files...\n`);
+    if (!isCheckMode) {
+      console.log(`📋 Processing ${targetGroups.size} configuration files...\n`);
+    }
 
     // 4. Process each target file
     const sortedTargets = Array.from(targetGroups.keys()).sort();
@@ -118,10 +127,33 @@ export class ConfigManager {
     for (const targetPath of sortedTargets) {
       const sources = targetGroups.get(targetPath);
       if (!sources) continue;
-      await this.processTarget(targetPath, sources, activeModules);
+      const changed = await this.processTarget(targetPath, sources, activeModules);
+      if (isCheckMode) {
+        const relativePath = path.relative(this.options.projectRoot, targetPath);
+        if (changed) {
+          changedTargets.push(relativePath);
+        } else {
+          unchangedTargets.push(relativePath);
+        }
+      }
     }
 
-    console.log("\n✅ Configuration applied successfully!");
+    if (isCheckMode) {
+      for (const relativePath of changedTargets) {
+        console.log(`CHANGED ${relativePath}`);
+      }
+      console.log(
+        `${changedTargets.length} changed, ${unchangedTargets.length} unchanged, ${sortedTargets.length} total`,
+      );
+    } else {
+      console.log("\n✅ Configuration applied successfully!");
+    }
+
+    return {
+      processedTargets: sortedTargets.length,
+      changedTargets,
+      unchangedTargets,
+    };
   }
 
   /**
@@ -201,16 +233,21 @@ export class ConfigManager {
     targetPath: string,
     sources: Source[],
     activeModules: string[],
-  ): Promise<void> {
-    const { verbose, dryRun } = this.options;
+  ): Promise<boolean | undefined> {
+    const { verbose, dryRun, check } = this.options;
+    const isCheckMode = Boolean(check);
     const relativePath = path.relative(this.options.projectRoot, targetPath);
 
     if (sources.length === 0) {
       // No sources - remove target if it exists
+      if (isCheckMode) {
+        return this.wouldRemoveTargetChange(targetPath);
+      }
+
       if (!dryRun) {
         await this.symlinkManager.remove(targetPath);
       }
-      return;
+      return undefined;
     }
 
     if (sources.length === 1) {
@@ -218,10 +255,16 @@ export class ConfigManager {
       const source = sources[0];
       const shouldCopy = source.metadata?._copy || false;
 
-      if (verbose) {
+      if (verbose && !isCheckMode) {
         console.log(
           `${shouldCopy ? "📄" : "🔗"} ${relativePath} (${shouldCopy ? "copy" : "symlink"} from ${path.relative(this.options.projectRoot, source.path)})`,
         );
+      }
+
+      if (isCheckMode) {
+        return shouldCopy
+          ? this.wouldCopyTargetChange(source.path, targetPath)
+          : this.wouldSymlinkTargetChange(source.path, targetPath);
       }
 
       if (!dryRun) {
@@ -233,14 +276,25 @@ export class ConfigManager {
       }
     } else {
       // Multiple sources - merge and generate
-      if (verbose) {
+      if (verbose && !isCheckMode) {
         console.log(`🤖 ${relativePath} (merging ${sources.length} sources)`);
+      }
+
+      if (isCheckMode) {
+        const computed = await this.computeMergedContent(
+          targetPath,
+          sources,
+          activeModules,
+        );
+        return this.wouldMergedTargetChange(targetPath, computed.renderedContent);
       }
 
       if (!dryRun) {
         await this.mergeAndWrite(targetPath, sources, activeModules);
       }
     }
+
+    return undefined;
   }
 
   /**
@@ -251,6 +305,19 @@ export class ConfigManager {
     sources: Source[],
     activeModules: string[],
   ): Promise<void> {
+    const computed = await this.computeMergedContent(
+      targetPath,
+      sources,
+      activeModules,
+    );
+    await this.writeMergedContent(targetPath, computed.renderedContent);
+  }
+
+  private async computeMergedContent(
+    targetPath: string,
+    sources: Source[],
+    activeModules: string[],
+  ): Promise<{ renderedContent: string }> {
     const ext = path.extname(targetPath).toLowerCase();
 
     // Get merge strategy (from first source with strategy, or auto-detect)
@@ -281,27 +348,22 @@ export class ConfigManager {
       sources.map((s) => s.path),
     );
 
-    // Remove existing symlink if present (otherwise writes will follow the symlink)
-    try {
-      const stats = await fs.lstat(targetPath);
-      if (stats.isSymbolicLink()) {
-        await fs.unlink(targetPath);
-      }
-    } catch (error: unknown) {
-      // File doesn't exist - that's fine
-      if (
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        error.code !== "ENOENT"
-      ) {
-        throw error;
-      }
-    }
+    const renderedContent = await this.renderMergedContent(
+      targetPath,
+      ext,
+      final,
+      header,
+    );
 
-    // Write file
-    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    return { renderedContent };
+  }
 
+  private async renderMergedContent(
+    targetPath: string,
+    ext: string,
+    final: ConfigContent,
+    header: string,
+  ): Promise<string> {
     // .code-workspace files are JSON files
     if ([".json", ".jsonc", ".json5", ".code-workspace"].includes(ext)) {
       const jsonCommentStyle = this.headerGenerator.getJsonCommentStyle(targetPath);
@@ -313,10 +375,10 @@ export class ConfigManager {
       
       if (jsonCommentStyle === "jsonc") {
         // JSONC: prepend // comments before the JSON
-        await fs.writeFile(targetPath, `${header}\n${jsonContent}\n`);
+        return `${header}\n${jsonContent}\n`;
       } else if (jsonCommentStyle === "none") {
         // No header
-        await fs.writeFile(targetPath, `${jsonContent}\n`);
+        return `${jsonContent}\n`;
       } else {
         // $comment: merge header object with content
         const headerObj = JSON.parse(header);
@@ -326,7 +388,7 @@ export class ConfigManager {
             : {}),
           ...(typeof final === "object" && final !== null ? final : {}),
         };
-        await fs.writeFile(targetPath, `${JSON.stringify(combined, null, 2)}\n`);
+        return `${JSON.stringify(combined, null, 2)}\n`;
       }
     } else if ([".yaml", ".yml"].includes(ext)) {
       // For YAML, prepend header comments
@@ -336,23 +398,120 @@ export class ConfigManager {
         sortKeys: false,
       };
       const yamlContent = YAML.stringify(final, yamlOptions);
-      await fs.writeFile(targetPath, header + yamlContent);
+      return header + yamlContent;
     } else if (ext === ".toml") {
       // For TOML, prepend header comments and stringify
       const TOML = await import("@iarna/toml");
       // TOML.stringify expects JsonMap, cast final appropriately
       const tomlContent = TOML.stringify(final as any);
-      await fs.writeFile(targetPath, header + tomlContent);
+      return header + tomlContent;
     } else if ([".ts", ".js", ".mjs", ".cjs"].includes(ext)) {
       // For JS/TS, prepend JSDoc header
       const content =
         typeof final === "string" ? final : JSON.stringify(final, null, 2);
-      await fs.writeFile(targetPath, `${header}\n${content}`);
+      return `${header}\n${content}`;
     } else {
       // For text files, prepend hash header
       const content =
         typeof final === "string" ? final : JSON.stringify(final, null, 2);
-      await fs.writeFile(targetPath, header + content);
+      return header + content;
     }
+  }
+
+  private async writeMergedContent(
+    targetPath: string,
+    renderedContent: string,
+  ): Promise<void> {
+    // Remove existing symlink if present (otherwise writes will follow the symlink)
+    try {
+      const stats = await fs.lstat(targetPath);
+      if (stats.isSymbolicLink()) {
+        await fs.unlink(targetPath);
+      }
+    } catch (error: unknown) {
+      // File doesn't exist - that's fine
+      if (!this.isEnoentError(error)) {
+        throw error;
+      }
+    }
+
+    // Write file
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.writeFile(targetPath, renderedContent);
+  }
+
+  private async wouldRemoveTargetChange(targetPath: string): Promise<boolean> {
+    try {
+      await fs.lstat(targetPath);
+      return true;
+    } catch (error: unknown) {
+      if (this.isEnoentError(error)) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  private async wouldSymlinkTargetChange(
+    sourcePath: string,
+    targetPath: string,
+  ): Promise<boolean> {
+    return !(await this.symlinkManager.isSymlinkTo(targetPath, sourcePath));
+  }
+
+  private async wouldCopyTargetChange(
+    sourcePath: string,
+    targetPath: string,
+  ): Promise<boolean> {
+    let targetStats: Awaited<ReturnType<typeof fs.lstat>>;
+    try {
+      targetStats = await fs.lstat(targetPath);
+    } catch (error: unknown) {
+      if (this.isEnoentError(error)) {
+        return true;
+      }
+      throw error;
+    }
+
+    if (!targetStats.isFile() || targetStats.isSymbolicLink()) {
+      return true;
+    }
+
+    const [sourceBuffer, targetBuffer] = await Promise.all([
+      fs.readFile(sourcePath),
+      fs.readFile(targetPath),
+    ]);
+    return !sourceBuffer.equals(targetBuffer);
+  }
+
+  private async wouldMergedTargetChange(
+    targetPath: string,
+    expectedContent: string,
+  ): Promise<boolean> {
+    let targetStats: Awaited<ReturnType<typeof fs.lstat>>;
+    try {
+      targetStats = await fs.lstat(targetPath);
+    } catch (error: unknown) {
+      if (this.isEnoentError(error)) {
+        return true;
+      }
+      throw error;
+    }
+
+    if (!targetStats.isFile() || targetStats.isSymbolicLink()) {
+      return true;
+    }
+
+    const currentContent = await fs.readFile(targetPath, "utf-8");
+    return currentContent !== expectedContent;
+  }
+
+  private isEnoentError(error: unknown): boolean {
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "ENOENT"
+    );
   }
 }

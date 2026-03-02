@@ -51,6 +51,12 @@ If your project already uses the `atom-framework/` structure, **no changes are r
    npx file-merge apply --dry-run --verbose
    ```
 
+   For CI or pre-commit checks, use:
+   ```bash
+   npx file-merge apply --check
+   ```
+   `--check` does not write files and exits with code `1` when files would change.
+
 ### Configuration Options
 
 See [README.md](./README.md#configuration) for full documentation.

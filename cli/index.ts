@@ -29,6 +29,7 @@ program
   .command('apply')
   .description('Apply configuration from templates, fragments, and overrides')
   .option('--dry-run', 'Show what would be generated without writing files')
+  .option('--check', 'Check whether apply would change files (no writes, exit 1 if changes)')
   .option('--verbose', 'Detailed output')
   .option('--filter <patterns...>', 'Only process files matching patterns')
   .option('--config <path>', 'Path to config file (default: .file-merge.config.json)')
@@ -37,14 +38,18 @@ program
 
     const manager = new ConfigManager({
       projectRoot,
-      dryRun: options.dryRun,
+      dryRun: options.dryRun || options.check,
+      check: options.check,
       verbose: options.verbose,
       filter: options.filter,
       configPath: options.config,
     });
 
     try {
-      await manager.apply();
+      const result = await manager.apply();
+      if (options.check && result.changedTargets.length > 0) {
+        process.exit(1);
+      }
     } catch (error) {
       console.error('\n❌ Error applying configuration:', error);
       process.exit(1);
