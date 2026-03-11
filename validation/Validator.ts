@@ -111,6 +111,7 @@ export class Validator {
                         "deep-merge",
                         "yaml-merge",
                         "append-lines",
+                        "properties-merge",
                         "replace",
                         "docker-compose",
                         "tsconfig",

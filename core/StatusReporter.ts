@@ -214,6 +214,8 @@ export class StatusReporter {
             const source = sources[0];
             if (source.type === "fragment") {
                 mode = "generated";
+            } else if (this.shouldGeneratePropertiesForSingleSource(targetPath, source)) {
+                mode = "generated";
             } else {
                 const relativeTarget = targetPath;
                 const copyPatterns = this.config.copyPatterns ?? [];
@@ -249,6 +251,18 @@ export class StatusReporter {
             sources: sourcePaths,
             isSymlink,
         };
+    }
+
+    private shouldGeneratePropertiesForSingleSource(targetPath: string, source: Source): boolean {
+        if (!targetPath.toLowerCase().endsWith(".properties")) {
+            return false;
+        }
+
+        const sourcePath = source.path.toLowerCase();
+        return (
+            sourcePath.endsWith(".template.properties") ||
+            sourcePath.endsWith(".overrides.properties")
+        );
     }
 
     /**

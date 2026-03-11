@@ -202,6 +202,7 @@ If `ENV=production`, this fragment will target `config/production/settings.json`
 - `docker-compose` - Docker Compose file merging
 - `tsconfig` - TypeScript config merging
 - `vscode-tasks` - VS Code tasks.json merging
+- `properties-merge` - Deterministic Java `.properties` merge with template/override precedence
 - `append-lines` - Line-by-line appending (for .gitignore, etc.)
 - `replace` - Last source wins
 

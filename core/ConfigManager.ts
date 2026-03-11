@@ -223,6 +223,18 @@ export class ConfigManager {
                 return;
             }
 
+            // .template.properties and .overrides.properties should always be materialized
+            // through merge generation, even as single-source inputs.
+            if (this.shouldGeneratePropertiesForSingleSource(targetPath, source)) {
+                if (verbose) {
+                    console.log(`🤖 ${relativePath} (single properties source)`);
+                }
+                if (!dryRun) {
+                    await this.mergeAndWrite(targetPath, sources, activeModules);
+                }
+                return;
+            }
+
             const copyPatterns = this.config.copyPatterns ?? [];
             const shouldCopyByPattern =
                 copyPatterns.length > 0 &&
@@ -403,6 +415,22 @@ export class ConfigManager {
             if (result === "skipped" && this.options.verbose) {
                 console.log(`  ⏭️  ${relativePath} unchanged`);
             }
+        } else if (ext === ".properties") {
+            // .properties output is already normalized by the merge strategy;
+            // keep template comments intact by not prepending generated headers.
+            let content: string;
+            if (typeof final === "string") {
+                content = final;
+            } else {
+                const fallback = typeof final === "object" && final !== null ? final : {};
+                content = `${JSON.stringify(fallback, null, 2)}\n`;
+            }
+            const normalizedContent =
+                content.length > 0 && !content.endsWith("\n") ? `${content}\n` : content;
+            const result = await this.writeGeneratedFileIfChanged(targetPath, normalizedContent);
+            if (result === "skipped" && this.options.verbose) {
+                console.log(`  ⏭️  ${relativePath} unchanged`);
+            }
         } else if ([".ts", ".js", ".mjs", ".cjs"].includes(ext)) {
             // For JS/TS, prepend JSDoc header
             const content = typeof final === "string" ? final : JSON.stringify(final, null, 2);
@@ -418,5 +446,16 @@ export class ConfigManager {
                 console.log(`  ⏭️  ${relativePath} unchanged`);
             }
         }
+    }
+
+    private shouldGeneratePropertiesForSingleSource(targetPath: string, source: Source): boolean {
+        if (path.extname(targetPath).toLowerCase() !== ".properties") {
+            return false;
+        }
+
+        const sourceName = path.basename(source.path).toLowerCase();
+        return (
+            sourceName.endsWith(".template.properties") || sourceName.endsWith(".overrides.properties")
+        );
     }
 }

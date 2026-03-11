@@ -5,6 +5,7 @@
  */
 
 import type { MergeContext, MergeStrategy, ValidationResult } from "../core/types.js";
+import { PropertiesMergeStrategy } from "./PropertiesMergeStrategy.js";
 
 /**
  * Generic deep merge strategy for JSON objects
@@ -631,6 +632,7 @@ export const strategies: Record<string, MergeStrategy> = {
     "vscode-tasks": new VSCodeTasksMergeStrategy(),
     "gitlab-ci": new GitLabCIMergeStrategy(),
     "pnpm-workspace": new PnpmWorkspaceMergeStrategy(),
+    "properties-merge": new PropertiesMergeStrategy(),
 };
 
 /**
@@ -654,6 +656,8 @@ export function getStrategy(strategyName: string | undefined, filePath: string):
         return strategies["append-lines"];
     } else if (fileName.endsWith(".editorconfig")) {
         return strategies.replace;
+    } else if (fileName.endsWith(".properties")) {
+        return strategies["properties-merge"];
     } else if (fileName.endsWith(".toml")) {
         return strategies["toml-merge"];
     } else if (fileName === "pnpm-workspace.yaml" || fileName === "pnpm-workspace.yml") {

@@ -1,7 +1,10 @@
 /**
  * Template Discovery
  *
- * Discovers master template files with __ prefix in config-templates directory
+ * Discovers template files in config-templates directory.
+ * Supported naming conventions:
+ *  - __filename.ext (legacy)
+ *  - filename.template.properties
  */
 
 import * as fs from "node:fs/promises";
@@ -19,7 +22,7 @@ export class TemplateDiscovery {
 
     /**
      * Discover all template files in configured templates directory
-     * Template files use __ prefix (e.g., __tsconfig.json)
+     * Template files can use __ prefix (legacy) or .template.properties suffix.
      */
     async discoverTemplates(): Promise<Source[]> {
         const templatesDir = path.join(
@@ -35,12 +38,18 @@ export class TemplateDiscovery {
             return [];
         }
 
-        // Find all files with __ prefix
-        const pattern = path.join(templatesDir, "**/__*");
-        const templatePaths = await glob(pattern, {
-            nodir: true,
-            dot: true, // Include hidden files like __.gitignore
-        });
+        // Find all supported template naming patterns.
+        const [legacyTemplatePaths, propertiesTemplatePaths] = await Promise.all([
+            glob(path.join(templatesDir, "**/__*"), {
+                nodir: true,
+                dot: true, // Include hidden files like __.gitignore
+            }),
+            glob(path.join(templatesDir, "**/*.template.properties"), {
+                nodir: true,
+                dot: true,
+            }),
+        ]);
+        const templatePaths = Array.from(new Set([...legacyTemplatePaths, ...propertiesTemplatePaths]));
 
         templatePaths.sort();
 
@@ -143,15 +152,30 @@ export class TemplateDiscovery {
             relativePath = TemplateVariableResolver.resolve(rawRelativePath);
         }
 
-        // Remove __ prefix from filename
-        // Handle cases like: __{{ENV}}.yaml -> {{ENV}}.yaml (after resolution)
-        // or: __file-{{NAME}}.yaml -> file-{{NAME}}.yaml (after resolution)
-        const targetRelative = relativePath.replace(/__([^/]+)$/, "$1");
+        const targetRelative = this.mapTemplateRelativePath(relativePath);
 
         // Resolve any remaining variables in the target path (in case variables are in directory parts)
         const fullyResolved = TemplateVariableResolver.resolve(targetRelative);
 
         return path.join(this.projectRoot, fullyResolved);
+    }
+
+    private mapTemplateRelativePath(relativePath: string): string {
+        const parsed = path.parse(relativePath);
+
+        if (parsed.base.startsWith("__")) {
+            // Legacy __filename.ext -> filename.ext
+            const targetBase = parsed.base.replace(/^__/, "");
+            return path.join(parsed.dir, targetBase);
+        }
+
+        if (/\.template\.properties$/iu.test(parsed.base)) {
+            // New filename.template.properties -> filename.properties
+            const targetBase = parsed.base.replace(/\.template\.properties$/iu, ".properties");
+            return path.join(parsed.dir, targetBase);
+        }
+
+        return relativePath;
     }
 
     /**
