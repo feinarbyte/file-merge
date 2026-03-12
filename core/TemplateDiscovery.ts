@@ -185,11 +185,9 @@ export class TemplateDiscovery {
         const ext = path.extname(filePath).toLowerCase();
         let content = await fs.readFile(filePath, "utf-8");
 
-        // Resolve template variables in content
-        // Missing variables should throw - they must be set in mise.toml or environment
-        if (TemplateVariableResolver.hasVariables(content)) {
-            content = TemplateVariableResolver.resolve(content);
-        }
+        // Resolve content unconditionally so escaped placeholders are unescaped
+        // (e.g. \{{VAR}} -> {{VAR}}) even when no env substitution is needed.
+        content = TemplateVariableResolver.resolve(content);
 
         if ([".json", ".jsonc", ".json5"].includes(ext) || filePath.endsWith(".code-workspace")) {
             // For JSON/JSONC, parse it after variable resolution

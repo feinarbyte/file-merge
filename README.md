@@ -184,6 +184,10 @@ File-merge supports template variables using `{{VARIABLE}}` syntax:
 
 Variables are resolved from environment variables. If a required variable is missing, the tool will fail with a clear error message.
 
+If you need a literal `{{...}}` token in generated output (for another tool to consume), escape it with a leading backslash:
+
+- `\{{VARIABLE}}` → preserved as literal `{{VARIABLE}}` (no env substitution)
+
 **Example:**
 ```yaml
 # Fragment file: packages/my-package/config.fragment.yaml
@@ -192,6 +196,13 @@ _targetPath: "config/{{ENV}}/settings.json"
 ```
 
 If `ENV=production`, this fragment will target `config/production/settings.json`.
+
+Literal placeholder example (e.g. for `mise`):
+
+```toml
+[env]
+_.path = ['\{{config_root}}/node_modules/.bin']
+```
 
 ## Merge Strategies
 
