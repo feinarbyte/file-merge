@@ -8,7 +8,12 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { glob } from "glob";
-import type { ConfigContent, Source } from "./types.js";
+import type { ConfigContent, FragmentMetadata, Source } from "./types.js";
+import {
+  isMarkdownPath,
+  parseFrontMatter,
+  stripOverrideComment,
+} from "./MarkdownUtils.js";
 
 export class OverrideDiscovery {
   constructor(private projectRoot: string) {}
@@ -35,14 +40,16 @@ export class OverrideDiscovery {
 
     for (const overridePath of overridePaths) {
       try {
-        const content = await this.loadFile(overridePath);
+        const source: Source = isMarkdownPath(overridePath)
+          ? await this.loadMarkdownOverride(overridePath)
+          : {
+              type: "override",
+              path: overridePath,
+              content: await this.loadFile(overridePath),
+              priority: 1000, // Overrides have highest priority
+            };
 
-        overrides.push({
-          type: "override",
-          path: overridePath,
-          content,
-          priority: 1000, // Overrides have highest priority
-        });
+        overrides.push(source);
       } catch (error) {
         console.error(`❌ Failed to load override ${overridePath}:`, error);
       }
@@ -62,6 +69,40 @@ export class OverrideDiscovery {
     const targetRelative = relative.replace(/\.overrides\.([^.]+)$/, ".$1");
 
     return path.join(this.projectRoot, targetRelative);
+  }
+
+  /**
+   * Load a Markdown override.
+   * - Removes the explanatory comment written by `config:override`
+   * - Optional front matter may select the merge strategy:
+   *     ---
+   *     _mergeStrategy: markdown-sections
+   *     ---
+   *   Front matter is only treated as metadata if it contains `_`-prefixed keys.
+   */
+  private async loadMarkdownOverride(overridePath: string): Promise<Source> {
+    let content = await fs.readFile(overridePath, "utf-8");
+    let metadata: FragmentMetadata | undefined;
+
+    const frontMatter = parseFrontMatter(content);
+    if (frontMatter && Object.keys(frontMatter.data).some((key) => key.startsWith("_"))) {
+      content = frontMatter.body;
+      const strategy = frontMatter.data._mergeStrategy;
+      if (typeof strategy === "string") {
+        metadata = {
+          _targetPath: path.relative(this.projectRoot, this.getTargetPath(overridePath)),
+          _mergeStrategy: strategy,
+        };
+      }
+    }
+
+    return {
+      type: "override",
+      path: overridePath,
+      content: stripOverrideComment(content),
+      metadata,
+      priority: 1000,
+    };
   }
 
   /**

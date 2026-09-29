@@ -5,6 +5,7 @@
  */
 
 import * as fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import * as childProcess from 'node:child_process';
 import { promisify } from 'node:util';
@@ -13,6 +14,8 @@ import { DiffExtractor } from '../migration/DiffExtractor.js';
 import { ConfigManager } from './ConfigManager.js';
 import { FileMergeConfigLoader, type FileMergeConfig } from './FileMergeConfig.js';
 import type { ConfigContent } from './types.js';
+import { HeaderGenerator } from './HeaderGenerator.js';
+import { isMarkdownPath, OVERRIDE_COMMENT_MARKER } from './MarkdownUtils.js';
 
 const exec = promisify(childProcess.exec);
 
@@ -113,8 +116,14 @@ export class OverrideCreator {
     console.log('\nNext steps:');
     console.log(`  1. Edit overrides: code ${overridePath}`);
     console.log('  2. Changes auto-apply with watch mode, or run: pnpm config:apply');
-    console.log('\nTip: Use null values to delete keys from template');
-    console.log('     Example: { "compilerOptions": { "strict": null } }');
+    if (isMarkdownPath(relativeTargetPath)) {
+      console.log('\nTip: Content is appended after the template (markdown-concat).');
+      console.log('     Add front matter "_mergeStrategy: markdown-sections" to merge');
+      console.log('     matching "## Heading" sections into the template instead.');
+    } else {
+      console.log('\nTip: Use null values to delete keys from template');
+      console.log('     Example: { "compilerOptions": { "strict": null } }');
+    }
   }
 
   /**
@@ -130,6 +139,17 @@ export class OverrideCreator {
     // Load both files
     const templateContent = await this.loadFile(absoluteTemplatePath);
     const currentContent = await this.loadFile(currentPath);
+
+    if (isMarkdownPath(relativeTargetPath)) {
+      // Line diff: keep lines of the current file that aren't in the template
+      const diff = this.diffExtractor.extractTextLines(
+        String(templateContent),
+        new HeaderGenerator(this.projectRoot).removeHeader(String(currentContent), path.extname(currentPath)),
+        { markdownSections: true },
+      );
+      const frontMatter = diff.usesSections ? '---\n_mergeStrategy: markdown-sections\n---\n\n' : '';
+      return frontMatter + this.generateMarkdownTemplate(path.basename(relativeTargetPath)) + diff.added;
+    }
 
     // Extract diff
     const diff = this.diffExtractor.extract(
@@ -154,6 +174,9 @@ export class OverrideCreator {
     }
     if (['.yaml', '.yml'].includes(ext)) {
       return this.generateYamlTemplate(basename);
+    }
+    if (isMarkdownPath(targetPath)) {
+      return this.generateMarkdownTemplate(basename);
     }
     return this.generateTextTemplate(basename);
   }
@@ -182,6 +205,25 @@ export class OverrideCreator {
 # Sources merged in order: template → fragments → THIS FILE
 
 # Example: Add your overrides below this line
+`;
+  }
+
+  /**
+   * Generate Markdown template
+   * Starts with an HTML comment ("#" would be a heading). The comment is
+   * recognised by OverrideDiscovery and not copied into the generated file.
+   */
+  private generateMarkdownTemplate(basename: string): string {
+    return `${OVERRIDE_COMMENT_MARKER} for ${basename}
+     Project-specific content. It is appended after the shared template
+     (and any fragments) when running: pnpm config:apply
+     To add content to an existing "## Heading" of the template instead of
+     appending, start this file with front matter:
+       ---
+       _mergeStrategy: markdown-sections
+       ---
+     This comment is not copied into ${basename}. -->
+
 `;
   }
 
@@ -286,13 +328,7 @@ export class OverrideCreator {
 
     const absolutePath = path.join(this.projectRoot, templatePath);
 
-    // Check if exists synchronously (for simplicity)
-    try {
-      require('node:fs').accessSync(absolutePath);
-      return templatePath;
-    } catch {
-      return null;
-    }
+    return existsSync(absolutePath) ? templatePath : null;
   }
 
   /**

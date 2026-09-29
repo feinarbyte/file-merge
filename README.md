@@ -2,7 +2,7 @@
 
 File fragment merger - batteries included, dlx-ready.
 
-Merge files from templates, fragments, and overrides with intelligent strategies for YAML, JSON, GitLab CI, Docker Compose, TypeScript configs, text files, and more.
+Merge files from templates, fragments, and overrides with intelligent strategies for YAML, JSON, GitLab CI, Docker Compose, TypeScript configs, Markdown, text files, and more.
 
 ## Installation
 
@@ -188,7 +188,7 @@ file-merge status [file]
 - **Smart merge strategies** - Auto-detects merge strategy based on file type
 - **Template variables** - Use `{{VARIABLE}}` syntax in filenames and paths (resolved from environment variables)
 - **Module filtering** - Only include fragments from active modules (configurable)
-- **Supported formats**: YAML, JSON, TOML, GitLab CI, Docker Compose, TypeScript configs, VS Code tasks, text files (.gitignore, .dockerignore), and more
+- **Supported formats**: YAML, JSON, TOML, GitLab CI, Docker Compose, TypeScript configs, VS Code tasks, Markdown (`.md`, `.markdown`), text files (.gitignore, .dockerignore), and more
 
 ## Template Variables
 
@@ -218,7 +218,68 @@ If `ENV=production`, this fragment will target `config/production/settings.json`
 - `tsconfig` - TypeScript config merging
 - `vscode-tasks` - VS Code tasks.json merging
 - `append-lines` - Line-by-line appending (for .gitignore, etc.)
+- `markdown-concat` - Default for `.md` / `.markdown`. Joins sources in priority order with one blank line
+- `markdown-sections` - Like `markdown-concat`, but merges a later `## Heading` into the earlier section with the same text
 - `replace` - Last source wins
+
+### Markdown
+
+A Markdown target such as `AGENTS.md` works like any other target:
+
+- **Template only** (`atom-framework/config-templates/__AGENTS.md`): `AGENTS.md` is a symlink to the template.
+- **Template plus override or fragments**: `AGENTS.md` is generated. The template comes first, then fragments by `_priority`, then `AGENTS.overrides.md`.
+
+The generated file starts with an HTML comment, because `#` is a heading in Markdown:
+
+```markdown
+<!-- 🤖 GENERATED FILE - DO NOT EDIT DIRECTLY
+     Edit source files instead:
+       • file://./atom-framework/config-templates/__AGENTS.md
+       • file://./AGENTS.overrides.md
+     To regenerate: pnpm config:apply -->
+```
+
+`markdown-concat` strips one trailing newline from each source and joins them with a blank line.
+Internal whitespace and duplicate lines are kept, and the result ends with exactly one newline.
+Sources that are empty or whitespace-only are skipped.
+
+`markdown-sections` is opt-in. With it, an override can add bullets to an existing template section without repeating the heading:
+
+```markdown
+---
+_mergeStrategy: markdown-sections
+---
+
+## Learned Workspace Facts
+
+- This project deploys with Helm.
+```
+
+Headings match on their trimmed text. Only `##` headings are merged, and headings inside fenced code blocks are ignored.
+When a list item follows a list item, no blank line is inserted. Everything that doesn't match is appended like `markdown-concat`.
+
+**Selecting the strategy.** Overrides and fragments can set `_mergeStrategy` in front matter. The first source in priority order that sets it wins. An override's front matter is only treated as metadata if it contains `_`-prefixed keys, and it is removed from the output.
+
+**Fragments** use front matter for their metadata, for example `packages/foo/agents.fragment.md`:
+
+```markdown
+---
+_targetPath: AGENTS.md
+_priority: 50
+---
+
+## Foo package
+
+Notes contributed by the foo package.
+```
+
+The front matter and the blank lines right after it are not included in the output.
+
+**`file-merge override AGENTS.md`** creates `AGENTS.overrides.md` starting with an explanatory `<!-- file-merge override ... -->` comment. That comment is not copied into the generated file.
+
+**`file-merge migrate analyze` / `extract`** treat Markdown as text and do a line diff against the template, ignoring the generated header.
+Lines added inside an existing `##` section are extracted under that heading, and the override then gets `_mergeStrategy: markdown-sections`.
+Lines removed from the template can't be expressed in an override. `extract` prints a warning for them.
 
 ## Development
 
@@ -236,6 +297,9 @@ pnpm run build
 
 # Watch mode
 pnpm run dev
+
+# Tests (builds, then runs node --test)
+pnpm test
 ```
 
 ## Releasing

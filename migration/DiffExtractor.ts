@@ -44,6 +44,118 @@ export class DiffExtractor {
   }
 
   /**
+   * Line diff for text files (used for Markdown).
+   *
+   * Returns the lines of `current` that are not part of `master`, in order.
+   * If `current` simply extends `master`, the extension is returned verbatim.
+   * Otherwise separate groups of added lines are joined with a blank line.
+   * Removed lines can't be expressed by an append-only override; they are only counted.
+   */
+  extractTextLines(
+    master: string,
+    current: string,
+    options: { markdownSections?: boolean } = {},
+  ): {
+    added: string;
+    addedLines: number;
+    removedLines: number;
+    identical: boolean;
+    /** True if hunks were prefixed with an existing "## Heading" (markdownSections option) */
+    usesSections: boolean;
+  } {
+    const normalize = (text: string) => text.replace(/\r\n/g, "\n").replace(/\n+$/, "");
+    const masterText = normalize(master);
+    const currentText = normalize(current);
+
+    if (masterText === currentText) {
+      return { added: "", addedLines: 0, removedLines: 0, identical: true, usesSections: false };
+    }
+
+    const finish = (text: string, removedLines: number, usesSections = false) => {
+      const added = text.replace(/^(?:[ \t]*\n)+/, "").replace(/\s+$/, "");
+      return {
+        added: added ? `${added}\n` : "",
+        addedLines: added ? added.split("\n").filter((l) => l.trim() !== "").length : 0,
+        removedLines,
+        identical: false,
+        usesSections: usesSections && added !== "",
+      };
+    };
+
+    // Fast path: current = master + appended content
+    // (skipped in section mode so appended lines keep their "## Heading")
+    if (
+      masterText === "" ||
+      (!options.markdownSections && currentText.startsWith(`${masterText}\n`))
+    ) {
+      return finish(currentText.slice(masterText.length), 0);
+    }
+
+    const a = masterText.split("\n");
+    const b = currentText.split("\n");
+    const n = a.length;
+    const m = b.length;
+
+    // LCS table (suffix lengths)
+    const width = m + 1;
+    const lcs = new Uint32Array((n + 1) * width);
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        lcs[i * width + j] = a[i] === b[j]
+          ? lcs[(i + 1) * width + j + 1] + 1
+          : Math.max(lcs[(i + 1) * width + j], lcs[i * width + j + 1]);
+      }
+    }
+
+    const isH2 = (line: string) => /^##[ \t]+\S/.test(line);
+    const hunks: string[][] = [];
+    let hunk: string[] = [];
+    let removedLines = 0;
+    let usesSections = false;
+    // Last "## Heading" of `current` that is shared with the template
+    let sharedHeading: string | undefined;
+    let hunkHeading: string | undefined;
+    let i = 0;
+    let j = 0;
+    const closeHunk = () => {
+      if (hunk.some((line) => line.trim() !== "")) {
+        const firstLine = hunk.find((line) => line.trim() !== "") ?? "";
+        if (options.markdownSections && hunkHeading && !isH2(firstLine)) {
+          hunks.push([hunkHeading, "", ...hunk]);
+          usesSections = true;
+        } else {
+          hunks.push(hunk);
+        }
+      }
+      hunk = [];
+    };
+
+    while (i < n || j < m) {
+      if (i < n && j < m && a[i] === b[j]) {
+        closeHunk();
+        if (isH2(b[j])) sharedHeading = b[j];
+        i++;
+        j++;
+      } else if (j < m && (i >= n || lcs[i * width + j + 1] >= lcs[(i + 1) * width + j])) {
+        if (hunk.length === 0) hunkHeading = sharedHeading;
+        // A new heading inside the hunk starts a new (unshared) section
+        if (isH2(b[j])) sharedHeading = undefined;
+        hunk.push(b[j]);
+        j++;
+      } else {
+        if (a[i].trim() !== "") removedLines++;
+        i++;
+      }
+    }
+    closeHunk();
+
+    const text = hunks
+      .map((lines) => lines.join("\n").replace(/^(?:[ \t]*\n)+/, "").replace(/\s+$/, ""))
+      .join("\n\n");
+    return finish(text, removedLines, usesSections);
+  }
+
+  /**
    * Smart diff - only extract semantic differences
    * This is the recommended default
    */

@@ -7,6 +7,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { TemplateDiscovery } from "../core/TemplateDiscovery.js";
+import { HeaderGenerator } from "../core/HeaderGenerator.js";
+import { isMarkdownPath } from "../core/MarkdownUtils.js";
 import { FileMergeConfigLoader, type FileMergeConfig } from "../core/FileMergeConfig.js";
 import type { ConfigContent, DiffExtractionOptions } from "../core/types.js";
 import { BackupManager } from "./BackupManager.js";
@@ -60,19 +62,33 @@ export class Migrator {
         // Load current file
         const currentContent = await this.loadFile(targetPath);
 
-        // Analyze diff
-        const analysis = this.diffExtractor.analyzeDiff(
-          template.content,
-          currentContent,
-        );
+        let identical: boolean;
+        let changeCount: number;
 
-        if (analysis.identical) {
-          results.identical.push(relativePath);
+        if (isMarkdownPath(targetPath)) {
+          // Markdown: line diff against the template
+          const lineDiff = this.diffExtractor.extractTextLines(
+            String(template.content ?? ""),
+            String(currentContent ?? ""),
+          );
+          identical = lineDiff.identical || (lineDiff.added === "" && lineDiff.removedLines === 0);
+          changeCount = lineDiff.addedLines + lineDiff.removedLines;
         } else {
-          const changeCount =
+          // Analyze diff
+          const analysis = this.diffExtractor.analyzeDiff(
+            template.content,
+            currentContent,
+          );
+          identical = analysis.identical;
+          changeCount =
             analysis.addedKeys.length +
             analysis.modifiedKeys.length +
             analysis.deletedKeys.length;
+        }
+
+        if (identical) {
+          results.identical.push(relativePath);
+        } else {
 
           if (changeCount > 20) {
             results.needsReview.push(relativePath);
@@ -198,11 +214,35 @@ export class Migrator {
         const currentContent = await this.loadFile(targetPath);
 
         // Extract diff
-        const result = this.diffExtractor.extract(
-          template.content,
-          currentContent,
-          extractOptions,
-        );
+        let result: { content: ConfigContent; metadata: { linesChanged: number } };
+        if (isMarkdownPath(targetPath)) {
+          // Markdown: keep lines not present in the template (line diff)
+          const lineDiff = this.diffExtractor.extractTextLines(
+            String(template.content ?? ""),
+            String(currentContent ?? ""),
+            { markdownSections: true },
+          );
+          if (lineDiff.removedLines > 0) {
+            console.log(
+              `  ⚠️  ${relativePath}: ${lineDiff.removedLines} template line(s) are missing in the current file; ` +
+              `removals can't be expressed in a Markdown override and will come back after apply`,
+            );
+          }
+          result = {
+            // Lines added inside existing "## Heading" sections are extracted under
+            // that heading; markdown-sections merges them back into place.
+            content: lineDiff.usesSections
+              ? `---\n_mergeStrategy: markdown-sections\n---\n\n${lineDiff.added}`
+              : lineDiff.added,
+            metadata: { linesChanged: lineDiff.addedLines },
+          };
+        } else {
+          result = this.diffExtractor.extract(
+            template.content,
+            currentContent,
+            extractOptions,
+          );
+        }
 
         if (!result.content || Object.keys(result.content).length === 0) {
           console.log(`  ⏭️  Skipped ${relativePath} (no differences)`);
@@ -269,6 +309,11 @@ export class Migrator {
   private async loadFile(filePath: string): Promise<ConfigContent> {
     const ext = path.extname(filePath).toLowerCase();
     const content = await fs.readFile(filePath, "utf-8");
+
+    if (isMarkdownPath(filePath)) {
+      // Markdown is text; drop a generated header before diffing
+      return new HeaderGenerator(this.projectRoot).removeHeader(content, ext);
+    }
 
     if ([".json", ".jsonc", ".json5"].includes(ext)) {
       try {

@@ -410,6 +410,15 @@ export class ConfigManager {
       const content =
         typeof final === "string" ? final : JSON.stringify(final, null, 2);
       return `${header}\n${content}`;
+    } else if ([".md", ".markdown"].includes(ext)) {
+      // For Markdown, prepend HTML-comment header followed by a blank line
+      if (typeof final !== "string") {
+        throw new Error(
+          `Merged Markdown for ${path.relative(this.options.projectRoot, targetPath)} is not text. ` +
+          `Use a Markdown strategy (markdown-concat or markdown-sections).`,
+        );
+      }
+      return final === "" ? `${header}\n` : `${header}\n\n${final}`;
     } else {
       // For text files, prepend hash header
       const content =

@@ -15,6 +15,7 @@ import type {
 } from "./types.js";
 import { TemplateVariableResolver } from "./TemplateVariableResolver.js";
 import type { FileMergeConfig } from "./FileMergeConfig.js";
+import { MARKDOWN_EXTENSIONS, parseFrontMatter } from "./MarkdownUtils.js";
 
 export class FragmentDiscovery {
   constructor(
@@ -89,6 +90,33 @@ export class FragmentDiscovery {
         console.error(`❌ Invalid TOML in ${filePath}:`, error);
         return null;
       }
+    } else if (MARKDOWN_EXTENSIONS.includes(ext)) {
+      // For Markdown files, metadata lives in YAML front matter:
+      //   ---
+      //   _targetPath: AGENTS.md
+      //   _priority: 50
+      //   ---
+      const frontMatter = parseFrontMatter(content);
+      if (!frontMatter) {
+        console.error(
+          `❌ Fragment ${filePath} missing front matter (---\n_targetPath: ...\n---)`,
+        );
+        return null;
+      }
+
+      const metadata = this.extractMetadata(frontMatter.data as JsonValue);
+      if (!metadata._targetPath) {
+        console.error(`❌ Fragment ${filePath} missing _targetPath`);
+        return null;
+      }
+      this.resolveTargetPathVariables(metadata, filePath);
+
+      return {
+        path: filePath,
+        content: frontMatter.body,
+        metadata,
+        relativeDir,
+      };
     } else if (ext === ".txt") {
       // For .txt files, extract metadata from special comments
       const metadata = this.extractTextMetadata(content);
@@ -97,20 +125,8 @@ export class FragmentDiscovery {
         return null;
       }
       
-      // Resolve template variables in _targetPath
-      try {
-        if (typeof metadata._targetPath === "string") {
-          metadata._targetPath = TemplateVariableResolver.resolve(metadata._targetPath);
-        } else if (Array.isArray(metadata._targetPath)) {
-          metadata._targetPath = metadata._targetPath.map(path => 
-            TemplateVariableResolver.resolve(path)
-          );
-        }
-      } catch (error) {
-        console.error(`❌ Failed to resolve template variables in _targetPath for ${filePath}:`, error);
-        throw error;
-      }
-      
+      this.resolveTargetPathVariables(metadata, filePath);
+
       return {
         path: filePath,
         content: this.stripMetadata(content),
@@ -135,19 +151,7 @@ export class FragmentDiscovery {
       return null;
     }
 
-    // Resolve template variables in _targetPath
-    try {
-      if (typeof metadata._targetPath === "string") {
-        metadata._targetPath = TemplateVariableResolver.resolve(metadata._targetPath);
-      } else if (Array.isArray(metadata._targetPath)) {
-        metadata._targetPath = metadata._targetPath.map(path => 
-          TemplateVariableResolver.resolve(path)
-        );
-      }
-    } catch (error) {
-      console.error(`❌ Failed to resolve template variables in _targetPath for ${filePath}:`, error);
-      throw error;
-    }
+    this.resolveTargetPathVariables(metadata, filePath);
 
     // Remove metadata properties from content
     const cleanContent = this.removeMetadataProperties(parsed);
@@ -158,6 +162,24 @@ export class FragmentDiscovery {
       metadata,
       relativeDir,
     };
+  }
+
+  /**
+   * Resolve template variables in _targetPath (mutates metadata)
+   */
+  private resolveTargetPathVariables(metadata: FragmentMetadata, filePath: string): void {
+    try {
+      if (typeof metadata._targetPath === "string") {
+        metadata._targetPath = TemplateVariableResolver.resolve(metadata._targetPath);
+      } else if (Array.isArray(metadata._targetPath)) {
+        metadata._targetPath = metadata._targetPath.map((target) =>
+          TemplateVariableResolver.resolve(target),
+        );
+      }
+    } catch (error) {
+      console.error(`❌ Failed to resolve template variables in _targetPath for ${filePath}:`, error);
+      throw error;
+    }
   }
 
   /**
