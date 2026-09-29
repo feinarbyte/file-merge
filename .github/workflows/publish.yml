@@ -1,6 +1,9 @@
-# Publishes @feinarbyte/file-merge to npm when a version tag is pushed.
+# Stages @feinarbyte/file-merge on npm when a version tag is pushed.
 # Uses npm trusted publishing (OIDC): no npm token is stored in GitHub.
-# The package's npm settings must list this repo + workflow file as trusted publisher.
+# The trusted publisher on npmjs.com allows only "npm stage publish" (not "npm publish"),
+# so a maintainer must approve each staged version with 2FA before it goes live:
+#   npm stage list @feinarbyte/file-merge
+#   npm stage approve <stage-id>
 name: Publish
 
 on:
@@ -22,9 +25,10 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      # Trusted publishing needs npm >= 11.5.1
-      - run: npm install -g npm@latest
+      # Staged publishing via trusted publishing needs a current npm
+      - run: npm install -g npm@^12
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
-      # npm (not pnpm) performs the OIDC exchange; provenance is attached automatically
-      - run: npm publish --access public
+      # npm (not pnpm) performs the OIDC exchange; provenance is attached automatically.
+      # Runs prepublishOnly (build) like npm publish, but only stages the version.
+      - run: npm stage publish --access public

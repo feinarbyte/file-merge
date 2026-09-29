@@ -345,7 +345,14 @@ pnpm test
 
 ## Releasing
 
-Releases are automated via GitHub Actions (`.github/workflows/publish.yml`). When a version tag is pushed, the workflow runs the tests and publishes the package to npm using [npm trusted publishing](https://docs.npmjs.com/trusted-publishers), so no npm token is stored in GitHub. The package's settings on npmjs.com list `feinarbyte/file-merge` with the workflow `publish.yml` as trusted publisher.
+Releases are automated via GitHub Actions (`.github/workflows/publish.yml`). When a version tag is pushed, the workflow runs the tests and **stages** the package on npm using [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) and `npm stage publish`, so no npm token is stored in GitHub. The package's settings on npmjs.com list `feinarbyte/file-merge` with the workflow `publish.yml` as trusted publisher, allowed to stage but not to publish directly.
+
+A staged version is not public until a maintainer approves it with 2FA (on npmjs.com or via the CLI):
+
+```bash
+npm stage list @feinarbyte/file-merge
+npm stage approve <stage-id>
+```
 
 ```bash
 # Patch release (bug fixes): 2.0.1 → 2.0.2
@@ -364,7 +371,7 @@ Each release command will:
 3. Create a git tag `vX.Y.Z`
 4. Push the commit and tag to origin
 
-The GitHub Actions publish workflow then automatically publishes to npm.
+The GitHub Actions publish workflow then stages the version on npm. Approve it with `npm stage approve <stage-id>` to make it public.
 
 ### Manual Publishing
 
