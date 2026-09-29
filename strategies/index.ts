@@ -523,11 +523,9 @@ export class GitLabCIMergeStrategy implements MergeStrategy {
         // Sort variables alphabetically
         if (result.variables) {
             const sortedVars: Record<string, any> = {};
-            Object.keys(result.variables)
-                .sort()
-                .forEach((key) => {
-                    sortedVars[key] = result.variables[key];
-                });
+            for (const key of Object.keys(result.variables).sort()) {
+                sortedVars[key] = result.variables[key];
+            }
             result.variables = sortedVars;
         }
 

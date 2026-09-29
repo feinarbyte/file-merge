@@ -108,11 +108,20 @@ export class OverrideDiscovery {
         const ext = path.extname(filePath).toLowerCase();
         const content = await fs.readFile(filePath, "utf-8");
 
-        if ([".json", ".jsonc", ".json5"].includes(ext)) {
+        // .code-workspace files are JSONC (JSON with comments and trailing commas allowed)
+        if ([".json", ".jsonc", ".json5", ".code-workspace"].includes(ext)) {
             try {
+                // Try strict JSON first
                 return JSON.parse(content);
             } catch {
-                return content;
+                // If strict JSON fails, try to parse as JSONC (remove trailing commas)
+                // This handles VS Code workspace files which allow trailing commas
+                try {
+                    const cleaned = content.replace(/,(\s*[}\]])/g, "$1");
+                    return JSON.parse(cleaned);
+                } catch {
+                    return content;
+                }
             }
         } else if ([".yaml", ".yml"].includes(ext)) {
             const YAML = await import("yaml");

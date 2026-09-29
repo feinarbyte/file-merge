@@ -19,6 +19,12 @@
     "prepublishOnly": "pnpm run build",
     "dev": "tsc --watch",
     "test": "tsc && node --test \"test/**/*.test.mjs\"",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
     "release:patch": "pnpm version patch -m 'chore(release): %s' && git push && git push --tags",
     "release:minor": "pnpm version minor -m 'chore(release): %s' && git push && git push --tags",
     "release:major": "pnpm version major -m 'chore(release): %s' && git push && git push --tags"
@@ -55,6 +61,7 @@
     "commander": "^11.1.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@types/node": "^20.11.0",
     "typescript": "^5.3.3"
   }
