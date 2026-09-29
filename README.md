@@ -345,7 +345,7 @@ pnpm test
 
 ## Releasing
 
-Releases are automated via GitHub Actions (`.github/workflows/publish.yml`). When a version tag is pushed, the workflow runs the tests and publishes the package to npm. It needs an `NPM_TOKEN` repository secret with publish rights for the `@feinarbyte` scope.
+Releases are automated via GitHub Actions (`.github/workflows/publish.yml`). When a version tag is pushed, the workflow runs the tests and publishes the package to npm using [npm trusted publishing](https://docs.npmjs.com/trusted-publishers), so no npm token is stored in GitHub. The package's settings on npmjs.com list `feinarbyte/file-merge` with the workflow `publish.yml` as trusted publisher.
 
 ```bash
 # Patch release (bug fixes): 2.0.1 → 2.0.2

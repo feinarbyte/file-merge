@@ -1,5 +1,6 @@
-# Publishes @feinarbyte/file-merge to npm when a version tag is pushed
-# (replaces the former GitLab CI publish job)
+# Publishes @feinarbyte/file-merge to npm when a version tag is pushed.
+# Uses npm trusted publishing (OIDC): no npm token is stored in GitHub.
+# The package's npm settings must list this repo + workflow file as trusted publisher.
 name: Publish
 
 on:
@@ -9,7 +10,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # npm provenance
+  id-token: write # required for trusted publishing (and provenance)
 
 jobs:
   publish:
@@ -21,9 +22,9 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm >= 11.5.1
+      - run: npm install -g npm@latest
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
-      - run: pnpm publish --access public --no-git-checks --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # npm (not pnpm) performs the OIDC exchange; provenance is attached automatically
+      - run: npm publish --access public
