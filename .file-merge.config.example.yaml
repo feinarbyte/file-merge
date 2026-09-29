@@ -9,6 +9,10 @@
 copyPatterns:
   - ".gitignore"
 
+# Replace arrays instead of merging them as a union (for ordered lists like CLI args)
+# replaceArrayPatterns:
+#   - "config/servers.json"
+
 # Directory containing template files with __ prefix
 templatesDir: config-templates
 

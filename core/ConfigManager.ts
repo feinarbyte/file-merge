@@ -271,14 +271,10 @@ export class ConfigManager {
                 return this.generateTarget(targetPath, sources, activeModules);
             }
 
-            const copyPatterns = this.config.copyPatterns ?? [];
-            const shouldCopyByPattern =
-                copyPatterns.length > 0 &&
-                copyPatterns.some(
-                    (pattern) =>
-                        minimatch(relativePath, pattern) ||
-                        minimatch(path.basename(relativePath), pattern),
-                );
+            const shouldCopyByPattern = matchesTargetPattern(
+                relativePath,
+                this.config.copyPatterns,
+            );
             const shouldCopy = Boolean(
                 this.config.noSymlink || source.metadata?._copy || shouldCopyByPattern,
             );
@@ -410,12 +406,16 @@ export class ConfigManager {
         const strategy = getStrategy(explicitStrategy, targetPath);
 
         // Create merge context
+        const relativePath = path.relative(this.options.projectRoot, targetPath);
         const context: MergeContext = {
             targetPath,
-            relativePath: path.relative(this.options.projectRoot, targetPath),
+            relativePath,
             sourcePaths: sources.map((s) => s.path),
             sourceMetadata: sources.map((s) => s.metadata),
             activeModules,
+            arrayMerge: matchesTargetPattern(relativePath, this.config.replaceArrayPatterns)
+                ? "replace"
+                : "union",
         };
 
         // Merge all sources
@@ -594,4 +594,15 @@ export class ConfigManager {
             error.code === "ENOENT"
         );
     }
+}
+
+/**
+ * Match a target path (relative to project root) against config glob patterns.
+ * A pattern matches either the full relative path or the file name.
+ */
+function matchesTargetPattern(relativePath: string, patterns: string[] | undefined): boolean {
+    return (patterns ?? []).some(
+        (pattern) =>
+            minimatch(relativePath, pattern) || minimatch(path.basename(relativePath), pattern),
+    );
 }

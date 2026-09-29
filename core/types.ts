@@ -98,6 +98,11 @@ export interface MergeContext {
     sourceMetadata?: Array<FragmentMetadata | undefined>;
     /** Active modules */
     activeModules: string[];
+    /**
+     * How deep-merge based strategies combine arrays (default: "union").
+     * Set from the `replaceArrayPatterns` config option.
+     */
+    arrayMerge?: "union" | "replace";
 }
 
 export interface ValidationResult {

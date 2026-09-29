@@ -9,7 +9,12 @@ import { PropertiesMergeStrategy } from "./PropertiesMergeStrategy.js";
 
 /**
  * Generic deep merge strategy for JSON objects
- * Recursively merges objects and arrays (concatenates arrays, deduplicates)
+ * Recursively merges objects and arrays.
+ *
+ * Arrays are merged as a union by default: each source's array is appended, skipping
+ * items that earlier sources already contributed. Repeated items within one source are
+ * kept, so ordered lists such as command-line arguments stay intact.
+ * With `context.arrayMerge === "replace"`, a later source's array replaces the earlier one.
  */
 export class DeepMergeStrategy implements MergeStrategy {
     name = "deep-merge";
@@ -27,14 +32,16 @@ export class DeepMergeStrategy implements MergeStrategy {
     merge(sources: any[], context: MergeContext): any {
         const result: any = {};
 
+        const arrayMerge = context?.arrayMerge ?? "union";
+
         for (const source of sources) {
-            this.deepMerge(result, source);
+            this.deepMerge(result, source, arrayMerge);
         }
 
         return result;
     }
 
-    private deepMerge(target: any, source: any): void {
+    private deepMerge(target: any, source: any, arrayMerge: "union" | "replace"): void {
         for (const key in source) {
             if (source[key] === null) {
                 // null deletes the key, but only if it doesn't already exist with content
@@ -48,12 +55,14 @@ export class DeepMergeStrategy implements MergeStrategy {
             }
 
             if (Array.isArray(source[key])) {
-                // Merge arrays (concatenate and deduplicate)
-                if (!target[key] || !Array.isArray(target[key])) {
-                    target[key] = [];
+                if (arrayMerge === "replace" || !Array.isArray(target[key])) {
+                    target[key] = [...source[key]];
+                    continue;
                 }
+                // Union: skip items contributed by earlier sources, keep repeats within this source
+                const earlier = [...target[key]];
                 for (const item of source[key]) {
-                    if (!target[key].includes(item)) {
+                    if (!earlier.includes(item)) {
                         target[key].push(item);
                     }
                 }
@@ -62,7 +71,7 @@ export class DeepMergeStrategy implements MergeStrategy {
                 if (!target[key] || typeof target[key] !== "object" || Array.isArray(target[key])) {
                     target[key] = {};
                 }
-                this.deepMerge(target[key], source[key]);
+                this.deepMerge(target[key], source[key], arrayMerge);
             } else {
                 // Direct assignment (primitives replace)
                 target[key] = source[key];

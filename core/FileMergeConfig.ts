@@ -54,6 +54,16 @@ export interface FileMergeConfig {
     copyPatterns?: string[];
 
     /**
+     * Glob patterns (relative to project root) for targets whose arrays are replaced instead of
+     * merged as a union. A later source's array then replaces the earlier one completely.
+     * Use this for files whose arrays are ordered lists, e.g. command-line arguments.
+     * Applies to the deep-merge, yaml-merge and toml-merge strategies.
+     *
+     * @default []
+     */
+    replaceArrayPatterns?: string[];
+
+    /**
      * Directory containing template files with __ prefix
      * Relative to project root
      * @default "atom-framework/config-templates"
@@ -122,6 +132,7 @@ export class FileMergeConfigLoader {
     private static readonly DEFAULTS: FileMergeConfig = {
         noSymlink: false,
         copyPatterns: [],
+        replaceArrayPatterns: [],
         templatesDir: "atom-framework/config-templates",
         fragmentPatterns: [
             "atom-framework/**/*.fragment.*",
@@ -195,6 +206,8 @@ export class FileMergeConfigLoader {
             const config: FileMergeConfig = {
                 noSymlink: userConfig.noSymlink ?? this.DEFAULTS.noSymlink!,
                 copyPatterns: userConfig.copyPatterns ?? this.DEFAULTS.copyPatterns!,
+                replaceArrayPatterns:
+                    userConfig.replaceArrayPatterns ?? this.DEFAULTS.replaceArrayPatterns!,
                 templatesDir: userConfig.templatesDir ?? this.DEFAULTS.templatesDir!,
                 fragmentPatterns: userConfig.fragmentPatterns ?? this.DEFAULTS.fragmentPatterns!,
                 ignorePatterns: userConfig.ignorePatterns ?? this.DEFAULTS.ignorePatterns!,
@@ -311,6 +324,9 @@ export class FileMergeConfigLoader {
                 "# copyPatterns:\n" +
                 '#   - ".gitignore"\n' +
                 '#   - ".gitattributes"\n\n' +
+                "# Replace arrays instead of merging them as a union (for ordered lists like CLI args)\n" +
+                "# replaceArrayPatterns:\n" +
+                '#   - "config/servers.json"\n\n' +
                 "# Directory containing template files with __ prefix\n" +
                 "templatesDir: config-templates\n\n" +
                 "# Glob patterns for discovering fragment files\n" +

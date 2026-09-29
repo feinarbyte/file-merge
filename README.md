@@ -72,6 +72,7 @@ ignorePatterns:
 
 - **`noSymlink`** - Copy single-source outputs instead of creating symlinks (default: `false`)
 - **`copyPatterns`** - Per-file glob patterns (relative to project root) for targets that should be **copied** instead of symlinked when they have a single source (default: `[]`)
+- **`replaceArrayPatterns`** - Per-file glob patterns (relative to project root) for targets whose arrays are **replaced** by later sources instead of merged as a union (default: `[]`). See [Array merging](#array-merging)
 - **`templatesDir`** - Directory containing template files with `__` prefix (default: `"atom-framework/config-templates"`)
 - **`fragmentPatterns`** - Glob patterns to discover fragment files. **Supports negation with `!` prefix**
   - Example: `["**/*.fragment.*", "!node_modules/**", "!folderA/**", "folderA/catalog.*.fragment.*"]`
@@ -246,6 +247,18 @@ _.path = ['\{{config_root}}/node_modules/.bin']
 - `markdown-concat` - Default for `.md` / `.markdown`. Joins sources in priority order with one blank line
 - `markdown-sections` - Like `markdown-concat`, but merges a later `## Heading` into the earlier section with the same text
 - `replace` - Last source wins
+
+### Array merging
+
+`deep-merge`, `yaml-merge` and `toml-merge` merge arrays as a union by default. Each source's array is appended, and items that earlier sources already contributed are skipped. Repeated items within one source are kept, so ordered lists like `["--flag", "a", "--flag", "b"]` stay intact.
+
+For files whose arrays are ordered lists, such as command-line arguments, a union is usually wrong. List those targets in `replaceArrayPatterns`, and a later source's array replaces the earlier one completely:
+
+```yaml
+# .file-merge.config.yaml
+replaceArrayPatterns:
+  - "config/servers.json"
+```
 
 ### Markdown
 
