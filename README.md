@@ -345,7 +345,7 @@ pnpm test
 
 ## Releasing
 
-Releases are automated via GitLab CI. When a version tag is pushed, the pipeline publishes the package to npm.
+Releases are automated via GitHub Actions (`.github/workflows/publish.yml`). When a version tag is pushed, the workflow runs the tests and publishes the package to npm. It needs an `NPM_TOKEN` repository secret with publish rights for the `@feinarbyte` scope.
 
 ```bash
 # Patch release (bug fixes): 2.0.1 → 2.0.2
@@ -364,7 +364,7 @@ Each release command will:
 3. Create a git tag `vX.Y.Z`
 4. Push the commit and tag to origin
 
-The GitLab CI pipeline then automatically publishes to npm.
+The GitHub Actions publish workflow then automatically publishes to npm.
 
 ### Manual Publishing
 
