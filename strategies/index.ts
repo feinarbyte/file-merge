@@ -5,6 +5,7 @@
  */
 
 import type { MergeContext, MergeStrategy, ValidationResult } from "../core/types.js";
+import { PropertiesMergeStrategy } from "./PropertiesMergeStrategy.js";
 
 /**
  * Generic deep merge strategy for JSON objects
@@ -406,7 +407,7 @@ export class GitLabCIMergeStrategy implements MergeStrategy {
                 this.mergeGlobalProperties(result, source);
             }
 
-            this.mergeJobs(result, source, sourcePath, isTemplate, context);
+            this.mergeJobs(result, source, sourcePath, i, isTemplate, context);
         }
 
         return result;
@@ -471,6 +472,7 @@ export class GitLabCIMergeStrategy implements MergeStrategy {
         target: any,
         source: any,
         sourcePath: string,
+        sourceIndex: number,
         isTemplate: boolean,
         context: MergeContext,
     ): void {
@@ -491,7 +493,22 @@ export class GitLabCIMergeStrategy implements MergeStrategy {
         const lastSlash = relativeSourcePath.lastIndexOf("/");
         const relativeDir = lastSlash >= 0 ? relativeSourcePath.substring(0, lastSlash) : ".";
 
-        const prefix = this.getJobPrefix(relativeDir);
+        let prefix = this.getJobPrefix(relativeDir);
+
+        // Allow per-fragment override of job prefixing (fragments only; templates/overrides will be undefined)
+        if (!isTemplate) {
+            const meta = context.sourceMetadata?.[sourceIndex];
+            const override = meta?.__gitlabJobPrefix;
+            if (override !== undefined) {
+                if (typeof override !== "string") {
+                    throw new Error(
+                        `Invalid __gitlabJobPrefix in ${sourcePath}: expected string, got ${typeof override}`,
+                    );
+                }
+                const trimmed = override.trim();
+                prefix = trimmed === "" ? null : trimmed;
+            }
+        }
 
         for (const [key, value] of Object.entries(source)) {
             if (GitLabCIMergeStrategy.GLOBAL_PROPERTIES.has(key)) {
@@ -811,6 +828,7 @@ export const strategies: Record<string, MergeStrategy> = {
     "pnpm-workspace": new PnpmWorkspaceMergeStrategy(),
     "markdown-concat": new MarkdownConcatStrategy(),
     "markdown-sections": new MarkdownSectionsStrategy(),
+    "properties-merge": new PropertiesMergeStrategy(),
 };
 
 /**
@@ -837,6 +855,8 @@ export function getStrategy(strategyName: string | undefined, filePath: string):
         return strategies["append-lines"];
     } else if (fileName.endsWith(".editorconfig")) {
         return strategies.replace;
+    } else if (fileName.endsWith(".properties")) {
+        return strategies["properties-merge"];
     } else if (fileName.endsWith(".toml")) {
         return strategies["toml-merge"];
     } else if (fileName === "pnpm-workspace.yaml" || fileName === "pnpm-workspace.yml") {

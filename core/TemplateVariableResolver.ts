@@ -5,6 +5,9 @@
  */
 
 export class TemplateVariableResolver {
+    private static readonly UNESCAPED_VARIABLE_PATTERN = /(?<!\\)\{\{(\w+)\}\}/g;
+    private static readonly ESCAPED_VARIABLE_PATTERN = /\\(\{\{\w+\}\})/g;
+
     /**
      * Resolve template variables in a string
      * @param template String containing {{VARIABLE}} placeholders
@@ -12,11 +15,10 @@ export class TemplateVariableResolver {
      * @throws Error if any variable is not set in environment
      */
     static resolve(template: string): string {
-        const pattern = /\{\{(\w+)\}\}/g;
         let result = template;
         const missingVars: string[] = [];
 
-        const matches = Array.from(template.matchAll(pattern));
+        const matches = Array.from(template.matchAll(this.UNESCAPED_VARIABLE_PATTERN));
 
         for (const match of matches) {
             const varName = match[1];
@@ -38,22 +40,22 @@ export class TemplateVariableResolver {
             );
         }
 
-        return result;
+        // Unescape literal placeholders (e.g. \{{VAR}} -> {{VAR}})
+        return result.replace(this.ESCAPED_VARIABLE_PATTERN, "$1");
     }
 
     /**
      * Check if a string contains template variables
      */
     static hasVariables(template: string): boolean {
-        return /\{\{\w+\}\}/.test(template);
+        return /(?<!\\)\{\{\w+\}\}/.test(template);
     }
 
     /**
      * Extract all variable names from a template
      */
     static extractVariables(template: string): string[] {
-        const pattern = /\{\{(\w+)\}\}/g;
-        const matches = Array.from(template.matchAll(pattern));
+        const matches = Array.from(template.matchAll(this.UNESCAPED_VARIABLE_PATTERN));
         return [...new Set(matches.map((m) => m[1]))];
     }
 }

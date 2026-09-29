@@ -22,6 +22,7 @@ export class OverrideDiscovery {
         const pattern = path.join(this.projectRoot, "**/*.overrides.*");
         const overridePaths = await glob(pattern, {
             nodir: true,
+            dot: true, // Include files in dot directories like .vscode
             ignore: [
                 "**/node_modules/**",
                 "**/dist/**",

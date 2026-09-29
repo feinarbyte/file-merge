@@ -6,6 +6,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { minimatch } from "minimatch";
 import { ActiveModuleFilter } from "./ActiveModuleFilter.js";
 import { type FileMergeConfig, FileMergeConfigLoader } from "./FileMergeConfig.js";
 import { FragmentDiscovery } from "./FragmentDiscovery.js";
@@ -207,15 +208,29 @@ export class StatusReporter {
     private async analyzeFile(targetPath: string, sources: Source[]): Promise<FileStatus> {
         const sourcePaths = sources.map((s) => path.relative(this.projectRoot, s.path));
 
-        // Check if file should be copied
-        const hasCopyFlag = sources.some((s) => s.metadata?._copy === true);
-
         // Determine mode
         let mode: "symlinked" | "generated" | "copied";
-        if (hasCopyFlag) {
-            mode = "copied";
-        } else if (sources.length === 1) {
-            mode = "symlinked";
+        if (sources.length === 1) {
+            const source = sources[0];
+            if (source.type === "fragment") {
+                mode = "generated";
+            } else if (this.shouldGeneratePropertiesForSingleSource(targetPath, source)) {
+                mode = "generated";
+            } else {
+                const relativeTarget = targetPath;
+                const copyPatterns = this.config.copyPatterns ?? [];
+                const shouldCopyByPattern =
+                    copyPatterns.length > 0 &&
+                    copyPatterns.some(
+                        (pattern) =>
+                            minimatch(relativeTarget, pattern) ||
+                            minimatch(path.basename(relativeTarget), pattern),
+                    );
+                const shouldCopy = Boolean(
+                    this.config.noSymlink || source.metadata?._copy === true || shouldCopyByPattern,
+                );
+                mode = shouldCopy ? "copied" : "symlinked";
+            }
         } else {
             mode = "generated";
         }
@@ -238,6 +253,18 @@ export class StatusReporter {
         };
     }
 
+    private shouldGeneratePropertiesForSingleSource(targetPath: string, source: Source): boolean {
+        if (!targetPath.toLowerCase().endsWith(".properties")) {
+            return false;
+        }
+
+        const sourcePath = source.path.toLowerCase();
+        return (
+            sourcePath.endsWith(".template.properties") ||
+            sourcePath.endsWith(".overrides.properties")
+        );
+    }
+
     /**
      * Group sources by target path
      */
@@ -250,7 +277,11 @@ export class StatusReporter {
 
         // Add templates
         for (const template of templates) {
-            const targetPath = this.templateDiscovery.getTargetPath(template.path);
+            const absoluteTargetPath = this.templateDiscovery.getTargetPath(
+                template.path,
+                template.resolvedRelativePath,
+            );
+            const targetPath = path.relative(this.projectRoot, absoluteTargetPath);
             if (!groups.has(targetPath)) {
                 groups.set(targetPath, []);
             }

@@ -13,7 +13,7 @@ export class BackupManager {
     private backupRoot: string;
 
     constructor(projectRoot: string) {
-        this.backupRoot = path.join(projectRoot, ".config-manager", "backups");
+        this.backupRoot = path.join(projectRoot, ".file-merge", "backups");
     }
 
     /**

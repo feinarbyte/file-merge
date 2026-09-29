@@ -21,30 +21,68 @@ export class FragmentDiscovery {
     /**
      * Discover all fragment files across the project
      * Returns unfiltered list (ActiveModuleFilter applies filtering later)
+     *
+     * Patterns are processed in order:
+     * - Positive patterns (without !) add files to the result set
+     * - Negative patterns (with !) remove files from the result set
+     *
+     * This allows later positive patterns to "re-include" files that were excluded.
+     * Example:
+     *   - "**\/*.fragment.*"           # include all
+     *   - "!atom-framework/modules/**" # exclude modules dir
+     *   - "atom-framework/modules/catalog.*.fragment.*"  # re-include catalog files
      */
     async discoverFragments(): Promise<Fragment[]> {
-        const searchLocations = this.config.fragmentPatterns ?? [];
+        const allPatterns = this.config.fragmentPatterns ?? [];
+        const baseIgnorePatterns = this.config.ignorePatterns ?? [];
 
-        const fragments: Fragment[] = [];
+        // Track included file paths (using Set for efficient add/remove)
+        const includedPaths = new Set<string>();
 
-        for (const pattern of searchLocations) {
-            const fullPattern = path.join(this.projectRoot, pattern);
-            const fragmentPaths = await glob(fullPattern, {
-                nodir: true,
-                ignore: this.config.ignorePatterns ?? [],
-            });
+        // Process patterns in order - this allows later patterns to override earlier ones
+        for (const pattern of allPatterns) {
+            if (pattern.startsWith("!")) {
+                // Negative pattern: remove matching files from result set
+                const negativePattern = pattern.slice(1);
+                const fullPattern = path.join(this.projectRoot, negativePattern);
 
-            fragmentPaths.sort();
+                const matchingPaths = await glob(fullPattern, {
+                    nodir: true,
+                    dot: true,
+                    ignore: baseIgnorePatterns.map((p) => path.join(this.projectRoot, p)),
+                });
 
-            for (const fragmentPath of fragmentPaths) {
-                try {
-                    const fragment = await this.loadFragment(fragmentPath);
-                    if (fragment) {
-                        fragments.push(fragment);
-                    }
-                } catch (error) {
-                    console.error(`❌ Failed to load fragment ${fragmentPath}:`, error);
+                for (const p of matchingPaths) {
+                    includedPaths.delete(p);
                 }
+            } else {
+                // Positive pattern: add matching files to result set
+                const fullPattern = path.join(this.projectRoot, pattern);
+
+                const matchingPaths = await glob(fullPattern, {
+                    nodir: true,
+                    dot: true,
+                    ignore: baseIgnorePatterns.map((p) => path.join(this.projectRoot, p)),
+                });
+
+                for (const p of matchingPaths) {
+                    includedPaths.add(p);
+                }
+            }
+        }
+
+        // Load all included fragments
+        const fragments: Fragment[] = [];
+        const sortedPaths = Array.from(includedPaths).sort();
+
+        for (const fragmentPath of sortedPaths) {
+            try {
+                const fragment = await this.loadFragment(fragmentPath);
+                if (fragment) {
+                    fragments.push(fragment);
+                }
+            } catch (error) {
+                console.error(`❌ Failed to load fragment ${fragmentPath}:`, error);
             }
         }
 
@@ -195,6 +233,8 @@ export class FragmentDiscovery {
             _targetPath: contentObj._targetPath as string | string[],
         };
 
+        if (contentObj.__gitlabJobPrefix !== undefined)
+            metadata.__gitlabJobPrefix = contentObj.__gitlabJobPrefix as string;
         if (contentObj._mergeStrategy !== undefined)
             metadata._mergeStrategy = contentObj._mergeStrategy as string;
         if (contentObj._priority !== undefined) metadata._priority = contentObj._priority as number;
@@ -245,11 +285,13 @@ export class FragmentDiscovery {
 
         const lines = content.split("\n");
         for (const line of lines) {
-            const match = line.match(/^_(\w+)=(.+)$/);
+            const match = line.match(/^_+(\w+)=(.+)$/);
             if (match) {
                 const [, key, value] = match;
                 if (key === "targetPath") {
                     metadata._targetPath = value.trim();
+                } else if (key === "gitlabJobPrefix") {
+                    metadata.__gitlabJobPrefix = value.trim();
                 } else if (key === "mergeStrategy") {
                     metadata._mergeStrategy = value.trim();
                 } else if (key === "priority") {
@@ -270,7 +312,7 @@ export class FragmentDiscovery {
      */
     private stripMetadata(content: string): string {
         const lines = content.split("\n");
-        const filtered = lines.filter((line) => !line.match(/^_\w+=/));
+        const filtered = lines.filter((line) => !line.match(/^_+\w+=/));
         return filtered.join("\n");
     }
 }

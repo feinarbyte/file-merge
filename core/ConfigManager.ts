@@ -6,6 +6,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { minimatch } from "minimatch";
 import YAML from "yaml";
 import { getStrategy } from "../strategies/index.js";
 import { ActiveModuleFilter } from "./ActiveModuleFilter.js";
@@ -249,9 +250,38 @@ export class ConfigManager {
         }
 
         if (sources.length === 1) {
-            // Single source - symlink or copy
+            // Single source
             const source = sources[0];
-            const shouldCopy = source.metadata?._copy || false;
+
+            // Special case: a single fragment should be GENERATED (not symlinked to the fragment file),
+            // because fragments often include metadata and aren't intended to be the canonical file on disk.
+            if (source.type === "fragment") {
+                if (verbose && !isCheckMode) {
+                    console.log(`🤖 ${relativePath} (single fragment source)`);
+                }
+                return this.generateTarget(targetPath, sources, activeModules);
+            }
+
+            // .template.properties and .overrides.properties should always be materialized
+            // through merge generation, even as single-source inputs.
+            if (this.shouldGeneratePropertiesForSingleSource(targetPath, source)) {
+                if (verbose && !isCheckMode) {
+                    console.log(`🤖 ${relativePath} (single properties source)`);
+                }
+                return this.generateTarget(targetPath, sources, activeModules);
+            }
+
+            const copyPatterns = this.config.copyPatterns ?? [];
+            const shouldCopyByPattern =
+                copyPatterns.length > 0 &&
+                copyPatterns.some(
+                    (pattern) =>
+                        minimatch(relativePath, pattern) ||
+                        minimatch(path.basename(relativePath), pattern),
+                );
+            const shouldCopy = Boolean(
+                this.config.noSymlink || source.metadata?._copy || shouldCopyByPattern,
+            );
 
             if (verbose && !isCheckMode) {
                 console.log(
@@ -278,33 +308,93 @@ export class ConfigManager {
                 console.log(`🤖 ${relativePath} (merging ${sources.length} sources)`);
             }
 
-            if (isCheckMode) {
-                const computed = await this.computeMergedContent(
-                    targetPath,
-                    sources,
-                    activeModules,
-                );
-                return this.wouldMergedTargetChange(targetPath, computed.renderedContent);
-            }
-
-            if (!dryRun) {
-                await this.mergeAndWrite(targetPath, sources, activeModules);
-            }
+            return this.generateTarget(targetPath, sources, activeModules);
         }
 
         return undefined;
     }
 
     /**
-     * Merge multiple sources and write the result
+     * Generate a target from its sources. In check mode, only report whether the
+     * target would change; in dry-run mode, do nothing.
      */
+    private async generateTarget(
+        targetPath: string,
+        sources: Source[],
+        activeModules: string[],
+    ): Promise<boolean | undefined> {
+        if (this.options.check) {
+            const computed = await this.computeMergedContent(targetPath, sources, activeModules);
+            return this.wouldMergedTargetChange(targetPath, computed.renderedContent);
+        }
+
+        if (!this.options.dryRun) {
+            await this.mergeAndWrite(targetPath, sources, activeModules);
+        }
+        return undefined;
+    }
+
+    /**
+     * Write generated content, skipping the write if the file already has identical
+     * content (avoids churn and file watcher events). Symlinks are always replaced.
+     */
+    private async writeGeneratedFileIfChanged(
+        targetPath: string,
+        nextContent: string,
+    ): Promise<"written" | "skipped"> {
+        const nextBuffer = Buffer.from(nextContent, "utf-8");
+
+        let stats: import("node:fs").Stats | undefined;
+        try {
+            stats = await fs.lstat(targetPath);
+        } catch (error: unknown) {
+            if (
+                typeof error === "object" &&
+                error !== null &&
+                "code" in error &&
+                error.code === "ENOENT"
+            ) {
+                // File doesn't exist yet - we'll write it below
+                stats = undefined;
+            } else {
+                throw error;
+            }
+        }
+
+        if (stats?.isDirectory()) {
+            throw new Error(`Cannot write ${targetPath}: is a directory`);
+        }
+
+        // If target is a symlink, always replace with a real file (mode correctness).
+        if (stats?.isSymbolicLink()) {
+            await fs.unlink(targetPath);
+            await fs.mkdir(path.dirname(targetPath), { recursive: true });
+            await fs.writeFile(targetPath, nextBuffer);
+            return "written";
+        }
+
+        if (stats?.isFile()) {
+            const existingBuffer = await fs.readFile(targetPath);
+            if (existingBuffer.equals(nextBuffer)) {
+                return "skipped";
+            }
+        }
+
+        await fs.mkdir(path.dirname(targetPath), { recursive: true });
+        await fs.writeFile(targetPath, nextBuffer);
+        return "written";
+    }
+
     private async mergeAndWrite(
         targetPath: string,
         sources: Source[],
         activeModules: string[],
     ): Promise<void> {
         const computed = await this.computeMergedContent(targetPath, sources, activeModules);
-        await this.writeMergedContent(targetPath, computed.renderedContent);
+        const result = await this.writeGeneratedFileIfChanged(targetPath, computed.renderedContent);
+        if (result === "skipped" && this.options.verbose) {
+            console.log(`  ⏭️  ${path.relative(this.options.projectRoot, targetPath)} unchanged`);
+        }
     }
 
     private async computeMergedContent(
@@ -324,6 +414,7 @@ export class ConfigManager {
             targetPath,
             relativePath: path.relative(this.options.projectRoot, targetPath),
             sourcePaths: sources.map((s) => s.path),
+            sourceMetadata: sources.map((s) => s.metadata),
             activeModules,
         };
 
@@ -390,6 +481,17 @@ export class ConfigManager {
             // TOML.stringify expects JsonMap, cast final appropriately
             const tomlContent = TOML.stringify(final as any);
             return header + tomlContent;
+        } else if (ext === ".properties") {
+            // .properties output is already normalized by the merge strategy;
+            // keep template comments intact by not prepending generated headers.
+            let content: string;
+            if (typeof final === "string") {
+                content = final;
+            } else {
+                const fallback = typeof final === "object" && final !== null ? final : {};
+                content = `${JSON.stringify(fallback, null, 2)}\n`;
+            }
+            return content.length > 0 && !content.endsWith("\n") ? `${content}\n` : content;
         } else if ([".ts", ".js", ".mjs", ".cjs"].includes(ext)) {
             // For JS/TS, prepend JSDoc header
             const content = typeof final === "string" ? final : JSON.stringify(final, null, 2);
@@ -407,25 +509,6 @@ export class ConfigManager {
             const content = typeof final === "string" ? final : JSON.stringify(final, null, 2);
             return header + content;
         }
-    }
-
-    private async writeMergedContent(targetPath: string, renderedContent: string): Promise<void> {
-        // Remove existing symlink if present (otherwise writes will follow the symlink)
-        try {
-            const stats = await fs.lstat(targetPath);
-            if (stats.isSymbolicLink()) {
-                await fs.unlink(targetPath);
-            }
-        } catch (error: unknown) {
-            // File doesn't exist - that's fine
-            if (!this.isEnoentError(error)) {
-                throw error;
-            }
-        }
-
-        // Write file
-        await fs.mkdir(path.dirname(targetPath), { recursive: true });
-        await fs.writeFile(targetPath, renderedContent);
     }
 
     private async wouldRemoveTargetChange(targetPath: string): Promise<boolean> {
@@ -489,6 +572,18 @@ export class ConfigManager {
 
         const currentContent = await fs.readFile(targetPath, "utf-8");
         return currentContent !== expectedContent;
+    }
+
+    private shouldGeneratePropertiesForSingleSource(targetPath: string, source: Source): boolean {
+        if (path.extname(targetPath).toLowerCase() !== ".properties") {
+            return false;
+        }
+
+        const sourceName = path.basename(source.path).toLowerCase();
+        return (
+            sourceName.endsWith(".template.properties") ||
+            sourceName.endsWith(".overrides.properties")
+        );
     }
 
     private isEnoentError(error: unknown): boolean {

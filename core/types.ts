@@ -32,6 +32,14 @@ export interface Fragment {
 export interface FragmentMetadata {
     /** Target file path(s) relative to project root */
     _targetPath: string | string[];
+    /**
+     * GitLab CI: override job name prefixing for this fragment when using the `gitlab-ci` strategy.
+     *
+     * - Omitted: derive prefix from fragment folder hierarchy (current behavior)
+     * - "" (empty string): disable prefixing (jobs keep their original keys)
+     * - "foo": prefix jobs as "foo:<jobKey>"
+     */
+    "__gitlabJobPrefix"?: string;
     /** Override auto-detected merge strategy */
     _mergeStrategy?: string;
     /** Merge priority (default: 100, higher = later) */
@@ -86,6 +94,8 @@ export interface MergeContext {
     relativePath: string;
     /** Source file paths in merge order */
     sourcePaths: string[];
+    /** Fragment metadata aligned to `sourcePaths` (templates/overrides will be undefined). */
+    sourceMetadata?: Array<FragmentMetadata | undefined>;
     /** Active modules */
     activeModules: string[];
 }

@@ -18,7 +18,7 @@
     "build": "tsc",
     "prepublishOnly": "pnpm run build",
     "dev": "tsc --watch",
-    "test": "tsc && node --test \"test/**/*.test.mjs\"",
+    "test": "tsc && node --test \"test/**/*.test.mjs\" \"test/**/*.test.js\"",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "lint": "biome lint .",

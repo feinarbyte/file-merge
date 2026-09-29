@@ -111,6 +111,7 @@ export class Validator {
                         "deep-merge",
                         "yaml-merge",
                         "append-lines",
+                        "properties-merge",
                         "replace",
                         "docker-compose",
                         "tsconfig",
@@ -126,6 +127,19 @@ export class Validator {
                             suggestion: `Use one of: ${validStrategies.join(", ")}`,
                         });
                     }
+                }
+
+                // GitLab CI: validate __gitlabJobPrefix type if present
+                // (Runtime can be non-string if YAML/JSON provides a number/bool; FragmentDiscovery casts but doesn't coerce.)
+                const gitlabJobPrefix = (fragment.metadata as any).__gitlabJobPrefix;
+                if (gitlabJobPrefix !== undefined && typeof gitlabJobPrefix !== "string") {
+                    this.addError({
+                        severity: ErrorSeverity.WARNING,
+                        code: "INVALID_GITLAB_JOB_PREFIX",
+                        message: `__gitlabJobPrefix must be a string (got ${typeof gitlabJobPrefix})`,
+                        file: fragment.path,
+                        suggestion: 'Use "__gitlabJobPrefix: \\"prefix\\"" or "__gitlabJobPrefix: \\"\\"" to disable prefixing',
+                    });
                 }
 
                 // Check conditional dependencies

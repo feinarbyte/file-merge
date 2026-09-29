@@ -70,6 +70,8 @@ ignorePatterns:
 
 ### Configuration Options
 
+- **`noSymlink`** - Copy single-source outputs instead of creating symlinks (default: `false`)
+- **`copyPatterns`** - Per-file glob patterns (relative to project root) for targets that should be **copied** instead of symlinked when they have a single source (default: `[]`)
 - **`templatesDir`** - Directory containing template files with `__` prefix (default: `"atom-framework/config-templates"`)
 - **`fragmentPatterns`** - Glob patterns to discover fragment files. **Supports negation with `!` prefix**
   - Example: `["**/*.fragment.*", "!node_modules/**", "!folderA/**", "folderA/catalog.*.fragment.*"]`
@@ -78,6 +80,17 @@ ignorePatterns:
   - `activeDir` - Directory where active modules are symlinked
   - `sourceDir` - Directory containing available modules
 - **`watchPatterns`** - Patterns to watch in watch mode (optional, auto-derived if not set)
+
+### Copy instead of symlink (per file)
+
+By default, targets with a **single source** (typically a template) are symlinked to keep a single canonical file.
+If you need a **real file** (for example `.gitignore` in some environments), configure per-target copy rules:
+
+```yaml
+# .file-merge.config.yaml
+copyPatterns:
+  - ".gitignore"
+```
 
 ### Config File Formats
 
@@ -199,6 +212,10 @@ File-merge supports template variables using `{{VARIABLE}}` syntax:
 
 Variables are resolved from environment variables. If a required variable is missing, the tool will fail with a clear error message.
 
+If you need a literal `{{...}}` token in generated output (for another tool to consume), escape it with a leading backslash:
+
+- `\{{VARIABLE}}` → preserved as literal `{{VARIABLE}}` (no env substitution)
+
 **Example:**
 ```yaml
 # Fragment file: packages/my-package/config.fragment.yaml
@@ -207,6 +224,13 @@ _targetPath: "config/{{ENV}}/settings.json"
 ```
 
 If `ENV=production`, this fragment will target `config/production/settings.json`.
+
+Literal placeholder example (e.g. for `mise`):
+
+```toml
+[env]
+_.path = ['\{{config_root}}/node_modules/.bin']
+```
 
 ## Merge Strategies
 
@@ -217,6 +241,7 @@ If `ENV=production`, this fragment will target `config/production/settings.json`
 - `docker-compose` - Docker Compose file merging
 - `tsconfig` - TypeScript config merging
 - `vscode-tasks` - VS Code tasks.json merging
+- `properties-merge` - Deterministic Java `.properties` merge with template/override precedence
 - `append-lines` - Line-by-line appending (for .gitignore, etc.)
 - `markdown-concat` - Default for `.md` / `.markdown`. Joins sources in priority order with one blank line
 - `markdown-sections` - Like `markdown-concat`, but merges a later `## Heading` into the earlier section with the same text
@@ -280,6 +305,22 @@ The front matter and the blank lines right after it are not included in the outp
 **`file-merge migrate analyze` / `extract`** treat Markdown as text and do a line diff against the template, ignoring the generated header.
 Lines added inside an existing `##` section are extracted under that heading, and the override then gets `_mergeStrategy: markdown-sections`.
 Lines removed from the template can't be expressed in an override. `extract` prints a warning for them.
+
+### GitLab CI job name prefix override (per fragment)
+
+When merging `.gitlab-ci.yml` using the `gitlab-ci` strategy, file-merge normally prefixes jobs based on the fragment file’s folder hierarchy.
+
+You can override this per fragment using `__gitlabJobPrefix`:
+
+```yaml
+_targetPath: .gitlab-ci.yml
+__gitlabJobPrefix: deploy   # "" disables prefixing
+
+build:
+  stage: build
+  script:
+    - echo "hello"
+```
 
 ## Development
 
